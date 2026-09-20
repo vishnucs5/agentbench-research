@@ -1,0 +1,260 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+from packages.dashboard.schemas import (
+    ComparisonDashboardData,
+    ConflictDashboardItem,
+    DashboardFilters,
+    EvaluationDashboardStats,
+    GapDashboardItem,
+    PaginatedRuns,
+    ProjectDashboardStats,
+    RunListItem,
+    RunTraceResponse,
+    TraceEventResponse,
+    TraceFilter,
+)
+from packages.domain.database import get_session
+from packages.domain.models import EventType, ResearchRun, RunStatus, TraceEvent
+from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
+
+
+class TraceReplayService:
+    def __init__(self, session: AsyncSession):
+        self._session = session
+
+    async def get_run_trace(self, run_id: UUID, trace_filter: TraceFilter | None = None) -> RunTraceResponse | None:
+        run = await self._get_run_with_events(run_id)
+        if not run:
+            return None
+
+        events = list(run.trace_events)
+
+        if trace_filter:
+            events = self._apply_trace_filter(events, trace_filter)
+
+        total_latency = sum(e.latency_ms or 0 for e in run.trace_events)
+        tool_calls = sum(1 for e in run.trace_events if e.event_type == EventType.TOOL_CALL)
+        evidence_ids = list({eid for e in run.trace_events for eid in e.evidence_ids})
+
+        return RunTraceResponse(
+            run_id=run.id,
+            project_id=run.project_id,
+            user_id=run.user_id,
+            request_text=run.request_text,
+            plan=run.plan_json,
+            status=run.status,
+            model_profile=run.model_profile,
+            started_at=run.started_at,
+            completed_at=run.completed_at,
+            error_code=run.error_code,
+            trace_events=[
+                TraceEventResponse(
+                    event_id=e.id,
+                    sequence_no=e.sequence_no,
+                    event_type=e.event_type,
+                    component=e.component,
+                    action=e.action,
+                    status=e.status,
+                    latency_ms=e.latency_ms,
+                    input_summary=e.input_summary,
+                    output_summary=e.output_summary,
+                    evidence_ids=e.evidence_ids,
+                    model_profile=e.model_profile,
+                    redaction_version=e.redaction_version,
+                    created_at=e.created_at,
+                )
+                for e in events
+            ],
+            total_latency_ms=total_latency,
+            total_tool_calls=tool_calls,
+            budgets=self._extract_budgets(run.plan_json),
+            evidence_ids=evidence_ids,
+        )
+
+    def _apply_trace_filter(self, events: list[TraceEvent], trace_filter: TraceFilter) -> list[TraceEvent]:
+        filtered = events
+
+        if trace_filter.event_types:
+            filtered = [e for e in filtered if e.event_type in trace_filter.event_types]
+
+        if trace_filter.components:
+            filtered = [e for e in filtered if e.component in trace_filter.components]
+
+        if trace_filter.statuses:
+            filtered = [e for e in filtered if e.status in trace_filter.statuses]
+
+        if trace_filter.start_sequence is not None:
+            filtered = [e for e in filtered if e.sequence_no >= trace_filter.start_sequence]
+
+        if trace_filter.end_sequence is not None:
+            filtered = [e for e in filtered if e.sequence_no <= trace_filter.end_sequence]
+
+        return filtered
+
+    def _extract_budgets(self, plan_json: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "max_papers": plan_json.get("max_papers"),
+            "max_tool_calls": plan_json.get("max_tool_calls"),
+            "deadline_seconds": plan_json.get("deadline_seconds"),
+            "token_budget": plan_json.get("token_budget"),
+        }
+
+    async def _get_run_with_events(self, run_id: UUID) -> ResearchRun | None:
+        result = await self._session.execute(
+            select(ResearchRun)
+            .options(selectinload(ResearchRun.trace_events))
+            .where(ResearchRun.id == run_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def list_runs(
+        self,
+        project_id: UUID | None = None,
+        filters: DashboardFilters | None = None,
+    ) -> PaginatedRuns:
+        from packages.dashboard.schemas import PaginatedRuns
+
+        query = select(ResearchRun).options(selectinload(ResearchRun.trace_events))
+
+        if project_id:
+            query = query.where(ResearchRun.project_id == project_id)
+
+        if filters:
+            if filters.project_ids:
+                query = query.where(ResearchRun.project_id.in_(filters.project_ids))
+            if filters.statuses:
+                query = query.where(ResearchRun.status.in_(filters.statuses))
+            if filters.date_from:
+                query = query.where(ResearchRun.started_at >= filters.date_from)
+            if filters.date_to:
+                query = query.where(ResearchRun.started_at <= filters.date_to)
+            if filters.model_profiles:
+                query = query.where(ResearchRun.model_profile.in_(filters.model_profiles))
+            if filters.search_query:
+                query = query.where(ResearchRun.request_text.ilike(f"%{filters.search_query}%"))
+
+        query = query.order_by(ResearchRun.started_at.desc())
+
+        page = filters.page if filters else 1
+        page_size = filters.page_size if filters else 20
+
+        total_result = await self._session.execute(select(func.count()).select_from(query.subquery()))
+        total = total_result.scalar() or 0
+
+        query = query.offset((page - 1) * 20).limit(20)
+        result = await self._session.execute(query)
+        runs = result.scalars().all()
+
+        run_items = []
+        for run in runs:
+            tool_calls = sum(1 for e in run.trace_events if e.event_type == EventType.TOOL_CALL)
+            total_latency = sum(e.latency_ms or 0 for e in run.trace_events)
+
+            run_items.append(RunListItem(
+                run_id=run.id,
+                project_id=run.project_id,
+                request_text=run.request_text[:100] + "..." if len(run.request_text) > 100 else run.request_text,
+                status=run.status,
+                model_profile=run.model_profile,
+                started_at=run.started_at,
+                completed_at=run.completed_at,
+                total_latency_ms=total_latency,
+                total_tool_calls=tool_calls,
+                evidence_count=sum(len(e.evidence_ids) for e in run.trace_events),
+            ))
+
+        return PaginatedRuns(
+            runs=run_items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=(total + page_size - 1) // page_size,
+        )
+
+    async def get_project_stats(self, project_id: UUID) -> ProjectDashboardStats:
+        from packages.dashboard.schemas import ProjectDashboardStats
+
+        runs_result = await self._session.execute(
+            select(ResearchRun)
+            .options(selectinload(ResearchRun.trace_events))
+            .where(ResearchRun.project_id == project_id)
+            .order_by(ResearchRun.started_at.desc())
+        )
+        runs = list(runs_result.scalars().all())
+
+        total_runs = len(runs)
+        completed_runs = sum(1 for r in runs if r.status == RunStatus.COMPLETED)
+        failed_runs = sum(1 for r in runs if r.status == RunStatus.FAILED)
+
+        total_evidence = sum(len(e.evidence_ids) for r in runs for e in r.trace_events)
+        total_latency = sum(e.latency_ms or 0 for r in runs for e in r.trace_events)
+
+        recent_runs = []
+        for run in runs[:5]:
+            tool_calls = sum(1 for e in run.trace_events if e.event_type == EventType.TOOL_CALL)
+            run_evidence_count = sum(len(e.evidence_ids) for e in run.trace_events)
+
+            recent_runs.append(RunListItem(
+                run_id=run.id,
+                project_id=run.project_id,
+                request_text=run.request_text[:100] + "..." if len(run.request_text) > 100 else run.request_text,
+                status=run.status,
+                model_profile=run.model_profile,
+                started_at=run.started_at,
+                completed_at=run.completed_at,
+                total_latency_ms=total_latency,
+                total_tool_calls=tool_calls,
+                evidence_count=run_evidence_count,
+            ))
+
+        return ProjectDashboardStats(
+            project_id=project_id,
+            project_name=f"Project {str(project_id)[:8]}",
+            total_papers=0,
+            total_runs=total_runs,
+            completed_runs=completed_runs,
+            failed_runs=failed_runs,
+            total_evidence=total_evidence,
+            avg_latency_ms=total_latency / total_runs if total_runs > 0 else 0,
+            recent_runs=recent_runs,
+        )
+
+    async def get_comparison_dashboard(self, synthesis_id: UUID) -> ComparisonDashboardData:
+        return ComparisonDashboardData(
+            project_id=UUID(int=0),
+            synthesis_id=synthesis_id,
+            comparison_tables=[],
+            gaps=[],
+            conflicts=[],
+            generated_at=datetime.utcnow(),
+        )
+
+    async def get_gaps_dashboard(self, project_id: UUID) -> list[GapDashboardItem]:
+        return []
+
+    async def get_conflicts_dashboard(self, project_id: UUID) -> list[ConflictDashboardItem]:
+        return []
+
+    async def get_evaluation_stats(self) -> EvaluationDashboardStats:
+        return EvaluationDashboardStats(
+            total_evaluations=0,
+            total_tasks=0,
+            avg_task_success=0.0,
+            avg_citation_precision=0.0,
+            avg_unsupported_claim_rate=0.0,
+            avg_retrieval_precision_at_5=0.0,
+            system_type_breakdown={},
+            category_breakdown={},
+            difficulty_breakdown={},
+            recent_runs=[],
+        )
+
+
+async def get_trace_replay_service():
+    async with get_session() as session:
+        yield TraceReplayService(session)

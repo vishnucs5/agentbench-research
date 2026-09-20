@@ -1,0 +1,8 @@
+[project]
+name = "agentbench-worker"
+version = "0.1.0"
+description = "AgentBench-Research Worker"
+dependencies = [
+    "sqlalchemy>=2.0.0",
+    "asyncpg>=0.29.0",
+]

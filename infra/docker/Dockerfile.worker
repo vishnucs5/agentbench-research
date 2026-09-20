@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml .
+COPY packages ./packages
+
+RUN pip install --no-cache-dir -e ./packages/domain \
+    && pip install --no-cache-dir -e ./packages/agent \
+    && pip install --no-cache-dir -e ./packages/retrieval \
+    && pip install --no-cache-dir -e ./packages/ingestion \
+    && pip install --no-cache-dir -e ./packages/extraction \
+    && pip install --no-cache-dir -e ./packages/synthesis \
+    && pip install --no-cache-dir -e ./packages/evaluation \
+    && pip install --no-cache-dir -e ./packages/observability \
+    && pip install --no-cache-dir -e ./packages/security
+
+COPY apps/worker ./apps/worker
+
+RUN pip install --no-cache-dir -e ./apps/worker

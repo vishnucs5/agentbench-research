@@ -1,0 +1,7 @@
+[project]
+name = "agentbench-dashboard"
+version = "0.1.0"
+description = "AgentBench-Research Dashboard"
+dependencies = [
+    "pydantic>=2.6.0",
+]

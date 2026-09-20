@@ -1,0 +1,135 @@
+[project]
+name = "agentbench-research"
+version = "0.1.0"
+description = "Evidence-grounded autonomous research-paper analysis agent"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # API & Web
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.2.0",
+    "python-multipart>=0.0.6",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+
+    # Database
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
+    "asyncpg>=0.29.0",
+    "psycopg2-binary>=2.9.9",
+    "aiosqlite>=0.20.0",
+
+    # Vector Store
+    "qdrant-client>=1.9.0",
+
+    # Object Storage
+    "minio>=7.2.0",
+
+    # PDF Parsing
+    "pymupdf>=1.23.0",
+
+    # Embeddings & Retrieval
+    "sentence-transformers>=3.0.0",
+    "rank-bm25>=0.2.2",
+
+    # LLM Providers
+    "openai>=1.12.0",
+    "httpx>=0.26.0",
+
+    # Agent & Workflow
+    "langgraph>=0.0.30",
+
+    # Observability
+    "opentelemetry-api>=1.22.0",
+    "opentelemetry-sdk>=1.22.0",
+    "opentelemetry-exporter-otlp>=1.22.0",
+    "opentelemetry-instrumentation-fastapi>=0.42b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.42b0",
+    "opentelemetry-instrumentation-httpx>=0.42b0",
+    "structlog>=24.1.0",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.1",
+    "tenacity>=8.2.0",
+    "email-validator>=2.1.0",
+    "python-slugify>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "httpx>=0.26.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.6.0",
+    "faker>=24.0.0",
+    "factory-boy>=3.3.0",
+]
+doc = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.25.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["apps", "packages", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "T20", # flake8-print
+    "ARG", # flake8-unused-arguments
+]
+ignore = ["E501", "ARG001", "ARG002"]
+per-file-ignores = { "tests/*" = ["S101", "T201"], "apps/api/papers.py" = ["B008"], "apps/api/retrieval.py" = ["B008"], "apps/api/extraction.py" = ["B008"], "apps/api/synthesis.py" = ["B008"], "apps/api/verification.py" = ["B008"], "apps/api/evaluation.py" = ["B008"], "apps/api/dashboard.py" = ["B008"], "apps/api/auth.py" = ["B008"], "apps/api/main.py" = ["B008"], "packages/security/auth.py" = ["B008"], "packages/security/middleware.py" = ["B008"] }
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+strict = true
+exclude = ["migrations", "scripts"]
+explicit_package_bases = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["apps", "packages"]
+omit = ["*/tests/*", "*/migrations/*"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["packages*"]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"

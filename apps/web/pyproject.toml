@@ -1,0 +1,8 @@
+[project]
+name = "agentbench-web"
+version = "0.1.0"
+description = "AgentBench-Research Web UI"
+dependencies = [
+    "streamlit>=1.30.0",
+    "requests>=2.31.0",
+]

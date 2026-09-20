@@ -1,0 +1,10 @@
+[project]
+name = "agentbench-retrieval"
+version = "0.1.0"
+description = "AgentBench-Research Retrieval"
+dependencies = [
+    "sentence-transformers>=3.0.0",
+    "rank-bm25>=0.2.2",
+    "qdrant-client>=1.9.0",
+    "pydantic>=2.6.0",
+]

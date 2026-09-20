@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentBench-Research • Evidence-Grounded Research Agent</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+tailwind.config={darkMode:'class', theme:{extend:{fontFamily:{sans:['Inter','sans-serif'], mono:['JetBrains Mono','monospace']}, colors:{brand:{50:'#eef2ff',100:'#e0e7ff',500:'#6366f1',600:'#4f46e5',700:'#4338ca',900:'#312e81'}}, boxShadow:{soft:'0 8px 30px rgba(0,0,0,.08)'}}}}
+</script>
+<style>
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}
+.glass{backdrop-filter:blur(16px);background:rgba(255,255,255,.75)}
+.dark .glass{background:rgba(15,23,42,.75)}
+.timeline-line{background:linear-gradient(to bottom,#6366f1,#22d3ee)}
+ evidence-chip{font-family:'JetBrains Mono',monospace}
+</style>
+</head>
+<body class="h-full bg-[#f8fafc] dark:bg-slate-950 text-slate-800 dark:text-slate-100 antialiased">
+<!-- Auth Overlay -->
+<div id="authOverlay" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-md">
+  <div class="w-full max-w-md mx-4 bg-white dark:bg-slate-900 rounded-2xl shadow-soft overflow-hidden border border-slate-200 dark:border-slate-800">
+    <div class="bg-gradient-to-br from-brand-600 to-violet-600 p-8 text-white">
+      <div class="flex items-center gap-3 mb-2"><div class="w-10 h-10 rounded-xl bg-white/20 grid place-items-center"><i class="fa-solid fa-flask text-xl"></i></div><span class="font-extrabold text-xl tracking-tight">AgentBench-Research</span></div>
+      <p class="text-white/80 text-sm leading-relaxed">Evidence-grounded autonomous research agent • Network Intrusion Detection</p>
+      <div class="mt-4 flex gap-2 text-xs"><span class="px-2 py-1 rounded-full bg-white/15">OpenRouter</span><span class="px-2 py-1 rounded-full bg-white/15">qwen3-coder:30b • Ollama</span><span class="px-2 py-1 rounded-full bg-white/15">Hybrid Retrieval</span></div>
+    </div>
+    <div class="p-6">
+      <div class="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mb-6 text-sm font-medium">
+        <button id="tabLogin" onclick="switchAuth('login')" class="flex-1 py-2 rounded-lg bg-white dark:bg-slate-700 shadow-sm">Login</button>
+        <button id="tabRegister" onclick="switchAuth('register')" class="flex-1 py-2 rounded-lg text-slate-500">Register</button>
+      </div>
+      <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4">
+        <div><label class="text-xs font-semibold tracking-wide uppercase text-slate-500">Email</label><input id="loginEmail" type="email" placeholder="researcher@lab.edu" class="mt-1 w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-brand-500 outline-none" required></div>
+        <div><label class="text-xs font-semibold tracking-wide uppercase text-slate-500">Password</label><input id="loginPassword" type="password" placeholder="••••••••" class="mt-1 w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-brand-500 outline-none" required></div>
+        <button type="submit" class="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold shadow-lg shadow-brand-500/20 flex items-center justify-center gap-2"><i class="fa-solid fa-right-to-bracket"></i> Sign in & Launch</button>
+        <p class="text-center text-xs text-slate-500">No account? <a href="#" onclick="switchAuth('register');return false" class="text-brand-600 font-medium">Create one</a> • Demo: <span class="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">demo@test.com / Demo1234!</span></p>
+      </form>
+      <form id="registerForm" onsubmit="handleRegister(event)" class="space-y-4 hidden">
+        <div><label class="text-xs font-semibold tracking-wide uppercase text-slate-500">Full name</label><input id="regName" type="text" placeholder="Ada Lovelace" class="mt-1 w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-brand-500 outline-none"></div>
+        <div><label class="text-xs font-semibold tracking-wide uppercase text-slate-500">Email</label><input id="regEmail" type="email" placeholder="ada@lab.edu" class="mt-1 w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-brand-500 outline-none" required></div>
+        <div><label class="text-xs font-semibold tracking-wide uppercase text-slate-500">Password</label><input id="regPassword" type="password" placeholder="Min 8 chars, Upper + lower + digit + special" class="mt-1 w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-brand-500 outline-none" required></div>
+        <div><label class="text-xs font-semibold tracking-wide uppercase text-slate-500">Role</label><select id="regRole" class="mt-1 w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"><option value="researcher">Researcher</option><option value="viewer">Viewer</option><option value="supervisor">Supervisor</option></select></div>
+        <button type="submit" class="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold shadow-lg flex items-center justify-center gap-2"><i class="fa-solid fa-user-plus"></i> Create account</button>
+        <p class="text-center text-xs text-slate-500">Already have an account? <a href="#" onclick="switchAuth('login');return false" class="text-brand-600 font-medium">Sign in</a></p>
+      </form>
+      <div class="mt-6 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-3"><i class="fa-solid fa-circle-info"></i><span>Tip: If no users exist, register first account — it becomes your project owner.</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- App Shell -->
+<div id="app" class="hidden min-h-screen flex">
+  <!-- Sidebar -->
+  <aside class="w-[280px] shrink-0 hidden lg:flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 h-screen">
+    <div class="p-6 border-b border-slate-100 dark:border-slate-800">
+      <div class="flex items-center gap-3"><div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-600 to-violet-600 grid place-items-center text-white shadow-lg"><i class="fa-solid fa-flask"></i></div><div><div class="font-extrabold leading-none">AgentBench</div><div class="text-[11px] tracking-widest font-semibold text-slate-500 uppercase">Research • v0.1.0</div></div></div>
+      <div class="mt-4 flex items-center gap-2 text-xs"><span id="providerBadge" class="px-2.5 py-1 rounded-full bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-semibold border border-brand-200 dark:border-brand-900"><i class="fa-solid fa-cloud mr-1"></i> openrouter • balanced</span><span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="API healthy"></span></div>
+    </div>
+    <div class="p-3 flex-1 overflow-y-auto">
+      <div class="text-[11px] font-bold tracking-widest text-slate-400 uppercase px-3 py-2">Workspace</div>
+      <nav class="space-y-1" id="sidebarNav">
+        <a data-view="overview" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl bg-brand-600 text-white font-medium shadow"><i class="fa-solid fa-chart-pie w-5"></i> Overview <span class="ml-auto text-xs bg-white/20 px-1.5 py-0.5 rounded">Live</span></a>
+        <a data-view="projects" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-folder-tree w-5 text-slate-400"></i> Projects <span id="navProjectsCount" class="ml-auto text-xs bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">0</span></a>
+        <a data-view="papers" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-file-pdf w-5 text-red-400"></i> Papers <span id="navPapersCount" class="ml-auto text-xs bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">0</span></a>
+        <a data-view="retrieval" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-magnifying-glass w-5 text-emerald-500"></i> Retrieval <span class="ml-auto text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold">HYBRID</span></a>
+        <a data-view="extraction" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-wand-magic-sparkles w-5 text-violet-500"></i> Extraction <span class="ml-auto text-xs bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded-full">8 types</span></a>
+        <a data-view="synthesis" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-table-columns w-5 text-amber-500"></i> Synthesis <span class="ml-auto text-xs bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full">Tables+</span></a>
+        <a data-view="verification" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-shield-halved w-5 text-cyan-500"></i> Verification</a>
+        <a data-view="reports" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-file-contract w-5 text-slate-500"></i> Reports</a>
+        <a data-view="evaluation" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-vial w-5 text-pink-500"></i> Evaluation <span class="ml-auto text-xs bg-pink-50 text-pink-700 px-1.5 py-0.5 rounded-full">20 tasks</span></a>
+        <a data-view="trace" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-timeline w-5 text-blue-500"></i> Trace Replay</a>
+        <div class="text-[11px] font-bold tracking-widest text-slate-400 uppercase px-3 py-2 mt-4">System</div>
+        <a data-view="settings" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-gear w-5"></i> Settings</a>
+        <a href="/docs" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-book w-5"></i> API Docs <i class="fa-solid fa-arrow-up-right-from-square ml-auto text-xs opacity-50"></i></a>
+      </nav>
+    </div>
+    <div class="p-4 border-t border-slate-100 dark:border-slate-800">
+      <div class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800">
+        <img id="userAvatar" src="https://i.pravatar.cc/100?u=researcher" class="w-8 h-8 rounded-full">
+        <div class="flex-1 min-w-0"><div id="userName" class="text-sm font-semibold truncate">Researcher</div><div id="userEmail" class="text-xs text-slate-500 truncate">—</div></div>
+        <button onclick="logout()" class="w-8 h-8 grid place-items-center rounded-lg hover:bg-white dark:hover:bg-slate-700"><i class="fa-solid fa-right-from-bracket text-slate-400"></i></button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <!-- Topbar -->
+    <header class="sticky top-0 z-30 glass border-b border-slate-200 dark:border-slate-800">
+      <div class="px-4 lg:px-8 py-3 flex items-center gap-4">
+        <button onclick="toggleSidebar()" class="lg:hidden w-9 h-9 grid place-items-center rounded-xl bg-white dark:bg-slate-800 border"><i class="fa-solid fa-bars"></i></button>
+        <div class="flex-1 flex items-center gap-3">
+          <div class="hidden sm:flex items-center gap-2 text-xs">
+            <span class="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900 font-mono"><span class="w-2 h-2 inline-block rounded-full bg-emerald-500 mr-1 animate-pulse"></span>Live API • SQLite • Qdrant Mock • MinIO Mock</span>
+            <span id="healthDot" class="hidden px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">health: ok</span>
+          </div>
+          <div class="flex-1 max-w-xl ml-auto hidden md:flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
+            <i class="fa-solid fa-magnifying-glass text-slate-400"></i><input id="globalSearch" placeholder="Ask over papers… (hybrid retrieval)" class="flex-1 bg-transparent outline-none text-sm" onkeydown="if(event.key==='Enter') quickSearch(this.value)"><span class="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-full">↵</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <select id="projectSelector" onchange="selectProject(this.value)" class="hidden sm:block px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium min-w-[180px]"><option value="">Select project…</option></select>
+          <button onclick="document.getElementById('projectSelector').focus()" class="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold"><i class="fa-solid fa-plus"></i> New Project</button>
+          <button onclick="toggleTheme()" class="w-9 h-9 grid place-items-center rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"><i id="themeIcon" class="fa-solid fa-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="flex-1 p-4 lg:p-8 overflow-auto">
+      <!-- OVERVIEW -->
+      <section id="view-overview" class="space-y-6">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <div><h1 class="text-2xl font-extrabold tracking-tight">Overview</h1><p class="text-slate-500">Evidence pipeline health • All features live • OpenRouter + Ollama ready</p></div>
+          <div class="flex gap-2"><button onclick="navigate('papers')" class="px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border font-medium"><i class="fa-solid fa-upload mr-2"></i>Upload PDF</button><button onclick="navigate('retrieval')" class="px-4 py-2 rounded-xl bg-brand-600 text-white font-semibold"><i class="fa-solid fa-bolt mr-2"></i>Try Hybrid Search</button></div>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-soft"><div class="flex items-center justify-between"><span class="text-xs font-bold tracking-widest uppercase text-slate-500">Papers</span><span class="w-8 h-8 grid place-items-center rounded-xl bg-red-50 text-red-600"><i class="fa-solid fa-file-pdf"></i></span></div><div id="statPapers" class="text-3xl font-extrabold mt-2">—</div><div class="text-xs text-slate-500">Page-aware • SHA-256 dedup</div><div class="mt-3 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"><div class="h-full bg-red-500" style="width: 68%"></div></div></div>
+          <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-soft"><div class="flex items-center justify-between"><span class="text-xs font-bold tracking-widest uppercase text-slate-500">Evidence</span><span class="w-8 h-8 grid place-items-center rounded-xl bg-emerald-50 text-emerald-600"><i class="fa-solid fa-layer-group"></i></span></div><div id="statEvidence" class="text-3xl font-extrabold mt-2">—</div><div class="text-xs text-slate-500">Chunks • 512 tok • Hybrid</div><div class="mt-3 flex gap-1"><span class="flex-1 h-1.5 bg-emerald-500 rounded-full"></span><span class="flex-1 h-1.5 bg-emerald-300 rounded-full"></span><span class="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full"></span></div></div>
+          <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-soft"><div class="flex items-center justify-between"><span class="text-xs font-bold tracking-widest uppercase text-slate-500">Claims</span><span class="w-8 h-8 grid place-items-center rounded-xl bg-violet-50 text-violet-600"><i class="fa-solid fa-wand-magic-sparkles"></i></span></div><div id="statClaims" class="text-3xl font-extrabold mt-2">—</div><div class="text-xs text-slate-500">8 types • Structured • Cited</div><div class="mt-3 text-xs"><span class="px-2 py-1 rounded-full bg-violet-50 text-violet-700">confidence ≥ 0.8</span></div></div>
+          <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-soft"><div class="flex items-center justify-between"><span class="text-xs font-bold tracking-widest uppercase text-slate-500">Runs</span><span class="w-8 h-8 grid place-items-center rounded-xl bg-blue-50 text-blue-600"><i class="fa-solid fa-timeline"></i></span></div><div id="statRuns" class="text-3xl font-extrabold mt-2">—</div><div class="text-xs text-slate-500">Traces • Budgets • Replay</div><div class="mt-3 flex items-center gap-2 text-xs text-slate-500"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Trace completeness 100%</div></div>
+        </div>
+        <div class="grid lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+            <div class="flex items-center justify-between mb-4"><h3 class="font-bold">Pipeline Progress • Vertical Slices</h3><span class="text-xs px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-mono">110 tests passing</span></div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="font-bold">Phase 0</div><div class="text-slate-500">Foundation</div><div class="mt-2 h-1 bg-emerald-500 rounded-full"></div><div class="text-emerald-600 font-semibold">Done</div></div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="font-bold">Phase 1</div><div class="text-slate-500">Ingestion</div><div class="mt-2 h-1 bg-emerald-500 rounded-full"></div><div class="text-emerald-600 font-semibold">Done</div></div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="font-bold">Phase 2</div><div class="text-slate-500">Retrieval</div><div class="mt-2 h-1 bg-emerald-500 rounded-full"></div><div class="text-emerald-600 font-semibold">Done</div></div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="font-bold">Phase 3</div><div class="text-slate-500">Extraction</div><div class="mt-2 h-1 bg-emerald-500 rounded-full"></div><div class="text-emerald-600 font-semibold">Done</div></div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="font-bold">Phase 4</div><div class="text-slate-500">Synthesis</div><div class="mt-2 h-1 bg-emerald-500 rounded-full"></div><div class="text-emerald-600 font-semibold">Done</div></div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="font-bold">Phase 5</div><div class="text-slate-500">Verification</div><div class="mt-2 h-1 bg-emerald-500 rounded-full"></div><div class="text-emerald-600 font-semibold">Done</div></div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="font-bold">Phase 6</div><div class="text-slate-500">Evaluation</div><div class="mt-2 h-1 bg-emerald-500 rounded-full"></div><div class="text-emerald-600 font-semibold">Done</div></div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="font-bold">Phase 7</div><div class="text-slate-500">Dashboard</div><div class="mt-2 h-1 bg-brand-500 rounded-full"></div><div class="text-brand-600 font-semibold">Live now</div></div>
+            </div>
+            <div class="mt-6 grid md:grid-cols-2 gap-4">
+              <div class="rounded-xl bg-gradient-to-br from-brand-600 to-violet-600 text-white p-5"><div class="text-sm font-bold opacity-90">Evidence-Grounded Answering</div><div class="text-2xl font-extrabold mt-1">Every claim → page</div><div class="text-white/80 text-sm mt-2">Citation precision ≥ 90% • Unsupported &lt; 10% • Page-aware text + tables</div></div>
+              <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-5"><div class="font-bold">Bounded Agent Budgets</div><div class="mt-2 space-y-2 text-sm"><div class="flex justify-between"><span class="text-slate-500">max_papers</span><span class="font-mono font-bold">10</span></div><div class="flex justify-between"><span class="text-slate-500">max_tool_calls</span><span class="font-mono font-bold">40</span></div><div class="flex justify-between"><span class="text-slate-500">deadline</span><span class="font-mono font-bold">180s</span></div></div></div>
+            </div>
+          </div>
+          <div class="space-y-6">
+            <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+              <h3 class="font-bold mb-4">Model Providers</h3>
+              <div class="space-y-3">
+                <div class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="w-9 h-9 rounded-lg bg-[#ff6a3d] grid place-items-center text-white"><i class="fa-solid fa-cloud"></i></div><div class="flex-1"><div class="text-sm font-bold">OpenRouter (cloud)</div><div class="text-xs text-slate-500 font-mono">claude-3.5-sonnet</div></div><span class="text-xs px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">Active</span></div>
+                <div class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="w-9 h-9 rounded-lg bg-black grid place-items-center text-white"><i class="fa-solid fa-microchip"></i></div><div class="flex-1"><div class="text-sm font-bold">Ollama (local)</div><div class="text-xs text-slate-500 font-mono">qwen3-coder:30b</div></div><span class="text-xs px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-700">Fallback</span></div>
+                <div class="flex items-center gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900"><i class="fa-solid fa-flask text-amber-600"></i><div class="flex-1"><div class="text-sm font-bold">Mock (deterministic)</div><div class="text-xs text-slate-600 dark:text-amber-200/70">For CI • 110 tests</div></div><span class="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800">Test</span></div>
+              </div>
+            </div>
+            <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+              <h3 class="font-bold mb-3">Quick Actions</h3>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="navigate('papers')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border text-sm font-medium hover:bg-white dark:hover:bg-slate-700 text-left"><i class="fa-solid fa-upload text-brand-600 mr-2"></i>Upload PDF</button>
+                <button onclick="navigate('retrieval')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border text-sm font-medium hover:bg-white dark:hover:bg-slate-700 text-left"><i class="fa-solid fa-magnifying-glass text-emerald-600 mr-2"></i>Search</button>
+                <button onclick="navigate('synthesis')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border text-sm font-medium hover:bg-white dark:hover:bg-slate-700 text-left"><i class="fa-solid fa-table text-amber-600 mr-2"></i>Compare</button>
+                <button onclick="navigate('evaluation')" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border text-sm font-medium hover:bg-white dark:hover:bg-slate-700 text-left"><i class="fa-solid fa-vial text-pink-600 mr-2"></i>Benchmark</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+          <div class="flex items-center justify-between mb-4"><h3 class="font-bold">Recent Runs • Trace Completeness 100%</h3><button onclick="navigate('trace')" class="text-sm text-brand-600 font-medium">View all →</button></div>
+          <div id="overviewRuns" class="space-y-2 text-sm text-slate-500">No runs yet — upload a paper to start. Traces are redacted and retained per retention policy.</div>
+        </div>
+      </section>
+
+      <!-- PROJECTS -->
+      <section id="view-projects" class="hidden space-y-6">
+        <div class="flex items-end justify-between"><div><h1 class="text-2xl font-extrabold">Projects</h1><p class="text-slate-500">Workspaces with retention • Domain: network-intrusion-detection</p></div><button onclick="document.getElementById('createProjectModal').classList.remove('hidden')" class="px-4 py-2.5 rounded-xl bg-brand-600 text-white font-semibold shadow"><i class="fa-solid fa-plus mr-2"></i>New Project</button></div>
+        <div id="projectsGrid" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+        <div id="createProjectModal" class="hidden fixed inset-0 z-50 grid place-items-center bg-slate-900/50 p-4"><div class="bg-white dark:bg-slate-900 rounded-2xl shadow-soft max-w-md w-full p-6 border"><h3 class="font-bold text-lg">Create project</h3><div class="mt-4 space-y-3"><input id="newProjectName" placeholder="e.g., NIDS Survey 2026" class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"><select id="newProjectDomain" class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"><option>network-intrusion-detection</option><option>healthcare</option><option>legal</option><option>software-engineering</option></select><input id="newProjectRetention" type="number" value="90" class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" placeholder="Retention days"></div><div class="mt-6 flex gap-2 justify-end"><button onclick="document.getElementById('createProjectModal').classList.add('hidden')" class="px-4 py-2 rounded-xl border">Cancel</button><button onclick="createProject()" class="px-4 py-2 rounded-xl bg-brand-600 text-white font-semibold">Create</button></div></div></div>
+      </section>
+
+      <!-- PAPERS -->
+      <section id="view-papers" class="hidden space-y-6">
+        <div class="flex flex-wrap items-end justify-between gap-4"><div><h1 class="text-2xl font-extrabold">Papers</h1><p class="text-slate-500">Upload → SHA-256 dedup → PyMuPDF page-aware parsing → MinIO + page-chunks</p></div><div class="flex gap-2"><input id="paperTitle" placeholder="Title (auto from PDF if empty)" class="px-3 py-2 rounded-xl border text-sm w-48"/><input id="paperAuthors" placeholder="Authors comma" class="px-3 py-2 rounded-xl border text-sm w-48"/></div></div>
+        <div id="uploadZone" class="group border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-900 p-8 text-center hover:border-brand-500 hover:bg-brand-50/50 dark:hover:bg-brand-950/20 transition cursor-pointer" onclick="document.getElementById('paperFile').click()" ondragover="event.preventDefault(); this.classList.add('border-brand-500')" ondragleave="this.classList.remove('border-brand-500')" ondrop="handleDrop(event)"><div class="w-12 h-12 mx-auto rounded-2xl bg-brand-600 text-white grid place-items-center shadow-lg"><i class="fa-solid fa-cloud-arrow-up text-xl"></i></div><div class="font-bold mt-3">Drop PDFs here or click to browse</div><div class="text-sm text-slate-500 mt-1">PDF only • 100 MB max • Idempotent by SHA-256 • Antivirus hook ready</div><input id="paperFile" type="file" accept="application/pdf" multiple class="hidden" onchange="uploadPapers(this.files)"><div id="uploadProgress" class="hidden mt-4 text-sm font-mono"></div></div>
+        <div class="flex flex-wrap gap-2 items-center"><select id="paperStatusFilter" onchange="loadPapers()" class="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900"><option value="">All statuses</option><option value="uploaded">uploaded</option><option value="parsing">parsing</option><option value="parsed">parsed</option><option value="indexed">indexed</option><option value="failed">failed</option></select><input id="paperSearch" placeholder="Search title…" class="px-3 py-2 rounded-xl border text-sm flex-1 max-w-xs" oninput="loadPapers()"><button onclick="loadPapers()" class="px-3 py-2 rounded-xl bg-slate-900 text-white text-sm"><i class="fa-solid fa-rotate mr-1"></i> Refresh</button><span id="papersCount" class="text-sm text-slate-500 ml-auto"></span></div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft overflow-hidden">
+          <div class="overflow-auto"><table class="w-full text-sm"><thead class="bg-slate-50 dark:bg-slate-800 text-xs uppercase tracking-wide text-slate-500"><tr><th class="text-left px-4 py-3">Paper</th><th class="text-left px-4 py-3">Status</th><th class="text-left px-4 py-3">Pages</th><th class="text-left px-4 py-3">Parser</th><th class="text-left px-4 py-3">SHA-256</th><th class="text-right px-4 py-3">Actions</th></tr></thead><tbody id="papersTable"></tbody></table></div>
+          <div id="papersEmpty" class="hidden p-12 text-center text-slate-500"><i class="fa-solid fa-inbox text-3xl mb-3 block opacity-30"></i>No papers in this project yet — upload one to see page-aware evidence.</div>
+        </div>
+        <div id="paperDetail" class="hidden bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6"><div class="flex items-start justify-between gap-4"><div><h3 id="paperDetailTitle" class="font-bold text-lg"></h3><div id="paperDetailMeta" class="text-sm text-slate-500"></div></div><button onclick="document.getElementById('paperDetail').classList.add('hidden')" class="w-8 h-8 grid place-items-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-xmark"></i></button></div><div class="mt-4 flex gap-2"><button onclick="extractCurrentPaper()" class="px-3 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Extract claims</button><button onclick="viewCurrentPages()" class="px-3 py-2 rounded-xl border text-sm"><i class="fa-solid fa-file-lines mr-1"></i> Pages</button><button id="paperDetailChapters" class="px-3 py-2 rounded-xl border text-sm">Chunks</button></div><div id="paperDetailBody" class="mt-4"></div></div>
+      </section>
+
+      <!-- RETRIEVAL -->
+      <section id="view-retrieval" class="hidden space-y-6">
+        <div><h1 class="text-2xl font-extrabold">Retrieval • Hybrid Evidence Store</h1><p class="text-slate-500">Chunk by section • Page boundaries preserved • BM25 + sentence-transformers • Stable evidence IDs</p></div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+          <div class="flex gap-3"><input id="retrievalQuery" placeholder="e.g., zero-day intrusion detection LSTM autoencoder 128 hidden CICIDS2017" class="flex-1 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm" onkeydown="if(event.key==='Enter') doSearch()"><button onclick="doSearch()" class="px-6 py-3 rounded-xl bg-brand-600 text-white font-bold shadow"><i class="fa-solid fa-magnifying-glass mr-2"></i>Search</button></div>
+          <div class="mt-4 grid md:grid-cols-3 gap-4">
+            <div class="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl"><button onclick="setSearchType('hybrid')" id="btnHybrid" class="flex-1 py-2 rounded-lg bg-white dark:bg-slate-700 shadow text-sm font-semibold">Hybrid</button><button onclick="setSearchType('semantic')" id="btnSemantic" class="flex-1 py-2 rounded-lg text-sm">Semantic</button><button onclick="setSearchType('bm25')" id="btnBm25" class="flex-1 py-2 rounded-lg text-sm">BM25</button></div>
+            <div class="flex items-center gap-2"><label class="text-xs font-bold uppercase tracking-wide text-slate-500">Top K</label><input id="retrievalTopK" type="range" min="1" max="20" value="10" class="flex-1"><span id="retrievalTopKVal" class="font-mono text-sm bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">10</span></div>
+            <div class="flex items-center gap-2"><label class="text-xs font-bold uppercase tracking-wide text-slate-500">Threshold</label><input id="retrievalThreshold" type="range" min="0" max="1" step="0.05" value="0" class="flex-1"><span id="retrievalThresholdVal" class="font-mono text-sm bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">0.00</span></div>
+          </div>
+          <div class="mt-4 grid md:grid-cols-2 gap-3">
+            <div class="flex gap-2"><span class="text-xs font-semibold py-2">BM25</span><input id="bm25Weight" type="range" min="0" max="1" step="0.1" value="0.5" class="flex-1"><span id="bm25WeightVal" class="font-mono text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">0.5</span><span class="text-xs font-semibold py-2">Semantic</span><input id="semanticWeight" type="range" min="0" max="1" step="0.1" value="0.5" class="flex-1"><span id="semanticWeightVal" class="font-mono text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">0.5</span></div>
+            <button onclick="document.getElementById('retrievalFilters').classList.toggle('hidden')" class="px-3 py-2 rounded-xl border text-sm"><i class="fa-solid fa-sliders mr-1"></i> Filters</button>
+          </div>
+          <div id="retrievalFilters" class="hidden mt-4 grid md:grid-cols-4 gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border">
+            <input id="filterAuthor" placeholder="Author" class="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900"><input id="filterYearFrom" type="number" placeholder="Year from" class="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900"><input id="filterYearTo" type="number" placeholder="Year to" class="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900"><input id="filterTopic" placeholder="Topic / domain" class="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900">
+          </div>
+          <div id="retrievalStats" class="mt-4 hidden flex gap-2 text-xs"><span id="retrievalTook" class="px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800"></span><span id="retrievalTotal" class="px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800"></span><span id="retrievalNotEnough" class="hidden px-2 py-1 rounded-full bg-amber-100 text-amber-800">not enough evidence</span></div>
+        </div>
+        <div id="retrievalResults" class="grid gap-3"></div>
+      </section>
+
+      <!-- EXTRACTION -->
+      <section id="view-extraction" class="hidden space-y-6">
+        <div class="flex items-end justify-between"><div><h1 class="text-2xl font-extrabold">Structured Extraction</h1><p class="text-slate-500">8 schemas • Pydantic validation • `not_reported` not hallucinated • Evidence links</p></div><div class="flex gap-2"><button onclick="extractAllTypes()" class="px-3 py-2 rounded-xl border text-sm">All types</button><button onclick="clearExtraction()" class="px-3 py-2 rounded-xl border text-sm">Clear</button></div></div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+          <div class="grid md:grid-cols-3 gap-4">
+            <div><label class="text-xs font-bold uppercase tracking-wide text-slate-500">Paper</label><select id="extractionPaper" class="mt-1 w-full px-3 py-2.5 rounded-xl border bg-white dark:bg-slate-800"><option value="">Select paper…</option></select></div>
+            <div class="md:col-span-2"><label class="text-xs font-bold uppercase tracking-wide text-slate-500">Claim types</label><div class="mt-1 flex flex-wrap gap-2" id="claimTypesPills"></div></div>
+          </div>
+          <div class="mt-4 flex items-center gap-3"><label class="flex items-center gap-2 text-sm"><input id="extractionForce" type="checkbox" class="rounded"> Force re-extract</label><input id="extractionChunkIds" placeholder="Chunk IDs filter (optional)" class="flex-1 px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-800"><button onclick="doExtraction()" class="px-6 py-2.5 rounded-xl bg-violet-600 text-white font-bold shadow"><i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Extract</button></div>
+          <div id="extractionProgress" class="hidden mt-4"><div class="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"><div id="extractionProgressBar" class="h-full bg-violet-600 transition-all" style="width:0%"></div></div><div id="extractionProgressText" class="text-xs text-slate-500 mt-1 font-mono">—</div></div>
+        </div>
+        <div id="extractionResults" class="space-y-3"></div>
+      </section>
+
+      <!-- SYNTHESIS -->
+      <section id="view-synthesis" class="hidden space-y-6">
+        <div><h1 class="text-2xl font-extrabold">Synthesis • Comparison & Gaps</h1><p class="text-slate-500">Normalize model/dataset/metric • Provenance per cell • Conflict detection • Repeated limitations → gaps</p></div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+          <div class="grid lg:grid-cols-2 gap-6">
+            <div><label class="text-xs font-bold uppercase tracking-wide text-slate-500">Select papers (multi)</label><div id="synthesisPapers" class="mt-2 max-h-48 overflow-auto border rounded-xl divide-y text-sm"></div></div>
+            <div><label class="text-xs font-bold uppercase tracking-wide text-slate-500">Comparison types</label><div id="synthesisTypes" class="mt-2 grid grid-cols-2 gap-2 text-sm"></div><div class="mt-4 flex gap-3"><label class="flex items-center gap-2 text-sm"><input id="synthesisGaps" type="checkbox" checked class="rounded"> Gaps</label><label class="flex items-center gap-2 text-sm"><input id="synthesisConflicts" type="checkbox" checked class="rounded"> Conflicts</label></div><button onclick="doSynthesis()" class="mt-4 w-full py-3 rounded-xl bg-amber-500 text-white font-bold shadow"><i class="fa-solid fa-table-columns mr-2"></i>Run Synthesis</button></div>
+          </div>
+        </div>
+        <div id="synthesisResults" class="space-y-6"></div>
+      </section>
+
+      <!-- VERIFICATION -->
+      <section id="view-verification" class="hidden space-y-6">
+        <div><h1 class="text-2xl font-extrabold">Verification • Citation & Claims</h1><p class="text-slate-500">Split into atomic claims • Supported / partially / unsupported / opinion • Require citations</p></div>
+        <div class="grid lg:grid-cols-2 gap-6">
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-500">Draft text to verify</label><textarea id="verificationDraft" rows="8" placeholder="Paste draft paragraph… The method achieves 98.7% accuracy on CICIDS2017 using LSTM-autoencoder…" class="mt-2 w-full px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 text-sm"></textarea>
+            <div class="mt-3 flex gap-2"><input id="verificationEvidence" placeholder="evidence IDs comma (e.g., ev_1,ev_2) or leave empty" class="flex-1 px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-800"><label class="flex items-center gap-2 text-sm"><input id="verificationStrict" type="checkbox" class="rounded"> Strict</label></div>
+            <button onclick="doVerification()" class="mt-4 w-full py-3 rounded-xl bg-cyan-600 text-white font-bold"><i class="fa-solid fa-shield-halved mr-2"></i>Verify</button>
+          </div>
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+            <div class="flex items-center justify-between"><h3 class="font-bold">Coverage</h3><span id="verificationCoverage" class="text-sm font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">—</span></div>
+            <div class="mt-4 grid place-items-center"><canvas id="coverageChart" width="180" height="180"></canvas></div>
+            <div class="mt-4 grid grid-cols-4 gap-2 text-center text-xs"><div class="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900"><div id="cntVerified" class="font-extrabold text-emerald-700">0</div><div>Verified</div></div><div class="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900"><div id="cntPartial" class="font-extrabold text-amber-700">0</div><div>Partial</div></div><div class="p-2 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900"><div id="cntUnsupported" class="font-extrabold text-red-700">0</div><div>Unsupported</div></div><div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div id="cntOpinion" class="font-extrabold">0</div><div>Opinion</div></div></div>
+          </div>
+        </div>
+        <div id="verificationResults" class="space-y-3"></div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+          <div class="flex items-center justify-between"><h3 class="font-bold">Generate Cited Report</h3><span class="text-xs px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800">Uncertainty section included</span></div>
+          <div class="mt-4 grid md:grid-cols-2 gap-3"><input id="reportPapers" placeholder="Paper IDs comma" class="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-800"><input id="reportSynthesisId" placeholder="Synthesis ID (optional)" class="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-800"></div>
+          <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm"><label class="flex items-center gap-2"><input id="reportTables" type="checkbox" checked> Tables</label><label class="flex items-center gap-2"><input id="reportGaps" type="checkbox" checked> Gaps</label><label class="flex items-center gap-2"><input id="reportConflicts" type="checkbox" checked> Conflicts</label><label class="flex items-center gap-2"><input id="reportUncertainty" type="checkbox" checked> Uncertainty</label></div>
+          <button onclick="doReport()" class="mt-4 w-full py-3 rounded-xl bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-bold"><i class="fa-solid fa-file-contract mr-2"></i>Generate Report</button>
+          <div id="reportView" class="hidden mt-6 prose prose-sm dark:prose-invert max-w-none"></div>
+        </div>
+      </section>
+
+      <!-- EVALUATION -->
+      <section id="view-evaluation" class="hidden space-y-6">
+        <div class="flex items-end justify-between"><div><h1 class="text-2xl font-extrabold">Evaluation • Benchmark</h1><p class="text-slate-500">20 gold tasks • 8 categories • 3 systems: direct_llm / static_rag / adaptive_agent • 6 metrics</p></div><button onclick="loadBenchmarkInfo()" class="px-3 py-2 rounded-xl border text-sm"><i class="fa-solid fa-circle-info mr-1"></i> Info</button></div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+          <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div><label class="text-xs font-bold uppercase tracking-wide text-slate-500">System</label><select id="evalSystem" class="mt-1 w-full px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-sm"><option value="adaptive_agent">Adaptive Agent (ours)</option><option value="static_rag">Static RAG</option><option value="direct_llm">Direct LLM</option></select></div>
+            <div><label class="text-xs font-bold uppercase tracking-wide text-slate-500">Model profile</label><select id="evalModel" class="mt-1 w-full px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-sm"><option value="balanced">balanced (OpenRouter)</option><option value="fast">fast</option><option value="local">local (qwen3-coder:30b)</option></select></div>
+            <div><label class="text-xs font-bold uppercase tracking-wide text-slate-500">Benchmark ver.</label><input id="evalVersion" value="1.0.0" class="mt-1 w-full px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-sm"></div>
+            <div class="flex items-end"><button onclick="runEvaluation()" class="w-full py-2.5 rounded-xl bg-pink-600 text-white font-bold shadow"><i class="fa-solid fa-play mr-2"></i>Run</button></div>
+          </div>
+          <div class="mt-4 grid md:grid-cols-2 gap-4">
+            <div><label class="text-xs font-bold uppercase tracking-wide text-slate-500">Categories</label><div id="evalCategories" class="mt-1 flex flex-wrap gap-2"></div></div>
+            <div><label class="text-xs font-bold uppercase tracking-wide text-slate-500">Difficulties</label><div id="evalDifficulties" class="mt-1 flex flex-wrap gap-2"><label class="text-sm flex items-center gap-1.5"><input type="checkbox" value="easy" class="evalDiff"> Easy</label><label class="text-sm flex items-center gap-1.5"><input type="checkbox" value="medium" class="evalDiff"> Medium</label><label class="text-sm flex items-center gap-1.5"><input type="checkbox" value="hard" class="evalDiff"> Hard</label></div></div>
+          </div>
+        </div>
+        <div id="evalSummary" class="grid md:grid-cols-3 gap-4"></div>
+        <div class="grid lg:grid-cols-2 gap-6">
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6"><h3 class="font-bold">Category Breakdown</h3><canvas id="evalCategoryChart" height="180"></canvas></div>
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6"><h3 class="font-bold">System Comparison</h3><canvas id="evalSystemChart" height="180"></canvas></div>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+          <div class="flex items-center justify-between"><h3 class="font-bold">Runs</h3><button onclick="loadEvalRuns()" class="text-sm text-brand-600">Refresh</button></div>
+          <div class="overflow-auto mt-3"><table class="w-full text-sm"><thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 dark:bg-slate-800"><tr><th class="text-left px-3 py-2">Run</th><th class="text-left px-3 py-2">System</th><th class="text-left px-3 py-2">Success</th><th class="text-left px-3 py-2">Citation P</th><th class="text-left px-3 py-2">Tasks</th></tr></thead><tbody id="evalRunsTable"></tbody></table></div>
+        </div>
+      </section>
+
+      <!-- TRACE -->
+      <section id="view-trace" class="hidden space-y-6">
+        <div class="flex items-end justify-between"><div><h1 class="text-2xl font-extrabold">Trace Replay</h1><p class="text-slate-500">State transitions • Tool calls • Evidence IDs • Latency • Retries • Errors • Redacted</p></div><button onclick="loadRuns()" class="px-3 py-2 rounded-xl border text-sm"><i class="fa-solid fa-rotate mr-1"></i> Reload runs</button></div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft overflow-hidden">
+          <div class="p-4 flex flex-wrap gap-2 items-center border-b border-slate-200 dark:border-slate-800"><input id="traceSearch" placeholder="Search request text…" class="px-3 py-2 rounded-xl border text-sm flex-1 max-w-sm" oninput="filterRuns()"><select id="traceStatusFilter" onchange="filterRuns()" class="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900"><option value="">All statuses</option><option>completed</option><option>failed</option><option>planning</option><option>retrieving</option></select><span id="traceCount" class="text-sm text-slate-500 ml-auto">—</span></div>
+          <div class="overflow-auto max-h-[320px]"><table class="w-full text-sm"><thead class="sticky top-0 bg-slate-50 dark:bg-slate-800 text-xs uppercase tracking-wide text-slate-500"><tr><th class="text-left px-4 py-2">Run</th><th class="text-left px-4 py-2">Status</th><th class="text-left px-4 py-2">Latency</th><th class="text-left px-4 py-2">Tools</th><th class="text-left px-4 py-2">Evidence</th><th class="text-left px-4 py-2">Model</th></tr></thead><tbody id="traceRunsTable"></tbody></table></div>
+        </div>
+        <div id="traceDetail" class="hidden space-y-6">
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div><h3 id="traceTitle" class="font-bold"></h3><div id="traceSubtitle" class="text-sm text-slate-500"></div><div id="traceBudgets" class="mt-2 flex flex-wrap gap-2 text-xs"></div></div>
+              <div class="text-right"><div id="traceLatency" class="text-2xl font-extrabold"></div><div class="text-xs text-slate-500">total latency</div></div>
+            </div>
+            <div class="mt-6 grid md:grid-cols-3 gap-4">
+              <div class="md:col-span-2"><canvas id="latencyChart" height="120"></canvas></div>
+              <div class="space-y-2 text-sm"><div class="flex justify-between"><span class="text-slate-500">Tool calls</span><span id="traceToolCalls" class="font-mono font-bold"></span></div><div class="flex justify-between"><span class="text-slate-500">Evidence IDs</span><span id="traceEvidenceCount" class="font-mono font-bold"></span></div><div class="flex justify-between"><span class="text-slate-500">Model</span><span id="traceModel" class="font-mono"></span></div><div class="mt-3 flex flex-wrap gap-2" id="traceEvidenceChips"></div></div>
+            </div>
+          </div>
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+            <div class="flex items-center justify-between mb-4"><h3 class="font-bold">Timeline</h3><div class="flex gap-2"><select id="traceEventType" onchange="filterTrace()" class="px-2 py-1 rounded-xl border text-xs"><option value="">All types</option><option value="state_transition">state_transition</option><option value="tool_call">tool_call</option><option value="evidence_retrieved">evidence_retrieved</option><option value="claim_extracted">claim_extracted</option><option value="error">error</option></select><input id="traceComponent" placeholder="Component" class="px-2 py-1 rounded-xl border text-xs" oninput="filterTrace()"></div></div>
+            <div id="traceTimeline" class="relative"></div>
+          </div>
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between"><h3 class="font-bold">Events • Input / Output summaries • Redacted</h3><span class="text-xs px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 font-mono">redact-v1</span></div>
+            <div class="overflow-auto"><table class="w-full text-sm"><thead class="bg-slate-50 dark:bg-slate-800 text-xs uppercase tracking-wide text-slate-500"><tr><th class="text-left px-4 py-2">#</th><th class="text-left px-4 py-2">Type</th><th class="text-left px-4 py-2">Component</th><th class="text-left px-4 py-2">Status</th><th class="text-left px-4 py-2">Latency</th><th class="text-left px-4 py-2">Evidence</th><th class="text-left px-4 py-2">Input/Output</th></tr></thead><tbody id="traceEventsTable"></tbody></table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="view-settings" class="hidden space-y-6">
+        <div><h1 class="text-2xl font-extrabold">Settings • Security & Reproducibility</h1><p class="text-slate-500">Model provider (OpenRouter vs Ollama) • Budgets • Parser • Retention • Theme</p></div>
+        <div class="grid lg:grid-cols-2 gap-6">
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+            <h3 class="font-bold">Model Providers</h3>
+            <div class="mt-4 space-y-3 text-sm">
+              <div class="p-3 rounded-xl border flex items-center justify-between"><div><div class="font-semibold">Default provider</div><div id="settingsProvider" class="text-xs text-slate-500 font-mono">—</div></div><span id="settingsProviderBadge" class="px-2 py-1 rounded-full text-xs font-bold"></span></div>
+              <div class="p-3 rounded-xl border"><div class="font-semibold">OpenRouter</div><div class="text-xs text-slate-500 font-mono">claude-3.5-sonnet • https://openrouter.ai/api/v1</div><div class="mt-2 flex gap-2"><input id="settingsORKey" type="password" placeholder="sk-or-..." class="flex-1 px-3 py-2 rounded-xl border text-xs font-mono bg-white dark:bg-slate-800"><button onclick="testProvider('openrouter')" class="px-3 py-2 rounded-xl border text-xs">Test</button></div></div>
+              <div class="p-3 rounded-xl border"><div class="font-semibold">Ollama (local)</div><div class="text-xs text-slate-500 font-mono">qwen3-coder:30b • http://localhost:11434</div><button onclick="testProvider('ollama')" class="mt-2 px-3 py-2 rounded-xl border text-xs">Test Ollama</button></div>
+              <div class="p-3 rounded-xl border"><div class="font-semibold">Mock (deterministic)</div><div class="text-xs text-slate-500">For CI • 110 tests</div></div>
+            </div>
+          </div>
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+            <h3 class="font-bold">Budgets & Limits</h3>
+            <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="text-xs uppercase tracking-wide font-bold text-slate-500">max_papers</div><div class="font-mono text-lg font-extrabold">10</div></div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="text-xs uppercase tracking-wide font-bold text-slate-500">max_tool_calls</div><div class="font-mono text-lg font-extrabold">40</div></div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="text-xs uppercase tracking-wide font-bold text-slate-500">deadline</div><div class="font-mono text-lg font-extrabold">180s</div></div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="text-xs uppercase tracking-wide font-bold text-slate-500">token_budget</div><div class="font-mono text-lg font-extrabold">100k</div></div>
+            </div>
+            <div class="mt-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs"><i class="fa-solid fa-triangle-exclamation text-amber-600 mr-1"></i> System prefers explicit <code>not_reported</code> over hallucination. Metric names normalized.</div>
+          </div>
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+            <h3 class="font-bold">Ingestion & Retrieval</h3>
+            <div class="mt-3 space-y-2 text-sm">
+              <div class="flex justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800"><span>Chunk size</span><span class="font-mono font-bold">512 tok</span></div>
+              <div class="flex justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800"><span>Chunk overlap</span><span class="font-mono font-bold">50</span></div>
+              <div class="flex justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800"><span>Embedding</span><span class="font-mono text-xs">all-MiniLM-L6-v2 • 384d</span></div>
+              <div class="flex justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800"><span>Hybrid</span><span class="font-mono">BM25 0.5 + Semantic 0.5</span></div>
+              <div class="flex justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800"><span>Score threshold</span><span class="font-mono">0.0 (not enough &lt;0.3)</span></div>
+            </div>
+          </div>
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+            <h3 class="font-bold">Security</h3>
+            <div class="mt-3 space-y-2 text-sm">
+              <div class="flex items-center gap-2"><i class="fa-solid fa-lock text-emerald-600"></i> JWT • RBAC (viewer/researcher/supervisor/admin)</div>
+              <div class="flex items-center gap-2"><i class="fa-solid fa-gauge text-blue-600"></i> Rate limit 60/min • 1000/hour</div>
+              <div class="flex items-center gap-2"><i class="fa-solid fa-shield-halved text-violet-600"></i> Prompt injection • SSRF • XSS • CSP headers</div>
+              <div class="flex items-center gap-2"><i class="fa-solid fa-eye-slash text-slate-500"></i> Redaction v1 • No secrets in traces</div>
+              <div class="flex items-center gap-2"><i class="fa-solid fa-database text-amber-600"></i> Retention per project • SQLite (dev) / Postgres (prod)</div>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft p-6">
+          <h3 class="font-bold">Endpoints</h3>
+          <div class="mt-3 grid md:grid-cols-2 gap-2 font-mono text-xs">
+            <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800">POST /v1/projects • GET /v1/projects</div>
+            <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800">POST /v1/projects/{id}/papers</div>
+            <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800">POST /v1/search • /semantic • /bm25</div>
+            <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800">POST /v1/projects/{id}/papers/{pid}/extraction</div>
+            <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800">POST /v1/projects/{id}/synthesis</div>
+            <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800">POST /v1/projects/{id}/verification/verify & /report</div>
+            <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800">POST /v1/evaluation/run</div>
+            <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800">GET /v1/dashboard/* • /healthz • /docs</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- Paper Pages Modal -->
+<div id="pagesModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur p-4 lg:p-8"><div class="max-w-5xl mx-auto bg-white dark:bg-slate-900 rounded-2xl shadow-soft overflow-hidden max-h-[90vh] flex flex-col"><div class="p-4 border-b flex items-center justify-between"><h3 class="font-bold">Paper pages • Page-aware evidence</h3><button onclick="this.closest('#pagesModal').classList.add('hidden')" class="w-8 h-8 grid place-items-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><i class="fa-solid fa-xmark"></i></button></div><div id="pagesModalBody" class="flex-1 overflow-auto p-4 space-y-4"></div></div></div>
+
+<!-- Toast -->
+<div id="toast" class="fixed bottom-4 right-4 z-[100] hidden"><div id="toastMsg" class="px-4 py-3 rounded-xl shadow-soft bg-slate-900 text-white text-sm flex items-center gap-2"><i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400"></i><span id="toastText"></span></div></div>
+
+<script>
+const API = location.origin;
+let token = localStorage.getItem('token');
+let user = JSON.parse(localStorage.getItem('user')||'null');
+let currentProject = localStorage.getItem('projectId') || '';
+let currentSearchType = 'hybrid';
+let coverageChart, latencyChart, evalCategoryChart, evalSystemChart;
+
+// --- helpers
+function api(path, opts={}) {
+  opts.headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
+  if(token) opts.headers['Authorization'] = 'Bearer ' + token;
+  return fetch(API + path, opts).then(async r=>{
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.detail || JSON.stringify(j));
+    return j;
+  });
+}
+function apiForm(path, formData){
+  const h={}; if(token) h['Authorization']='Bearer '+token;
+  return fetch(API+path,{method:'POST', headers:h, body:formData}).then(async r=>{
+    const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.detail||JSON.stringify(j)); return j;
+  });
+}
+function toast(msg, type='ok'){
+  const el=document.getElementById('toast'); const txt=document.getElementById('toastText'); const ic=document.getElementById('toastIcon');
+  txt.textContent=msg; ic.className= type==='err'?'fa-solid fa-triangle-exclamation text-red-400':'fa-solid fa-circle-check text-emerald-400';
+  el.classList.remove('hidden'); setTimeout(()=>el.classList.add('hidden'), 3500);
+}
+function navigate(view){
+  document.querySelectorAll('[id^="view-"]').forEach(s=>s.classList.add('hidden'));
+  document.getElementById('view-'+view).classList.remove('hidden');
+  document.querySelectorAll('.nav-item').forEach(a=>a.classList.remove('bg-brand-600','text-white','shadow'));
+  const active=document.querySelector(`[data-view="${view}"]`);
+  if(active) active.classList.add('bg-brand-600','text-white','shadow');
+  location.hash=view;
+  // lazy loads
+  if(view==='overview') loadOverview();
+  if(view==='projects') loadProjects();
+  if(view==='papers') {loadProjects(); loadPapers();}
+  if(view==='evaluation') {loadBenchmarkMeta(); loadEvalRuns();}
+  if(view==='trace') loadRuns();
+  if(view==='settings') loadSettings();
+}
+function switchAuth(which){
+  document.getElementById('tabLogin').className = which==='login' ? 'flex-1 py-2 rounded-lg bg-white dark:bg-slate-700 shadow-sm' : 'flex-1 py-2 rounded-lg text-slate-500';
+  document.getElementById('tabRegister').className = which==='register' ? 'flex-1 py-2 rounded-lg bg-white dark:bg-slate-700 shadow-sm' : 'flex-1 py-2 rounded-lg text-slate-500';
+  document.getElementById('loginForm').classList.toggle('hidden', which!=='login');
+  document.getElementById('registerForm').classList.toggle('hidden', which!=='register');
+}
+function toggleTheme(){ document.documentElement.classList.toggle('dark'); localStorage.setItem('theme', document.documentElement.classList.contains('dark')?'dark':'light'); updateThemeIcon(); }
+function updateThemeIcon(){ document.getElementById('themeIcon').className = document.documentElement.classList.contains('dark')?'fa-solid fa-sun':'fa-solid fa-moon'; }
+function toggleSidebar(){ document.querySelector('aside').classList.toggle('hidden'); document.querySelector('aside').classList.toggle('flex'); }
+function setSearchType(t){ currentSearchType=t; ['Hybrid','Semantic','Bm25'].forEach(x=>{ const b=document.getElementById('btn'+x); if(!b) return; b.className = x.toLowerCase()===t ? 'flex-1 py-2 rounded-lg bg-white dark:bg-slate-700 shadow text-sm font-semibold' : 'flex-1 py-2 rounded-lg text-sm';});}
+function quickSearch(q){ if(!q) return; navigate('retrieval'); document.getElementById('retrievalQuery').value=q; doSearch();}
+
+// --- auth
+function updateAuthUI(){
+  if(token && user){
+    document.getElementById('authOverlay').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    document.getElementById('userName').textContent = user.full_name || user.email || 'Researcher';
+    document.getElementById('userEmail').textContent = user.email || '';
+  } else {
+    document.getElementById('authOverlay').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+  }
+}
+async function handleLogin(e){
+  e.preventDefault();
+  const email=document.getElementById('loginEmail').value.trim();
+  const password=document.getElementById('loginPassword').value;
+  try{
+    const j=await api('/v1/auth/login',{method:'POST', body:JSON.stringify({email,password})});
+    token=j.access_token; localStorage.setItem('token', token);
+    const me=await api('/v1/auth/me'); user=me; localStorage.setItem('user', JSON.stringify(user));
+    updateAuthUI(); toast('Welcome back, '+(user.full_name||user.email)); navigate('overview');
+  }catch(err){ toast(err.message,'err');}
+}
+async function handleRegister(e){
+  e.preventDefault();
+  const payload={email:document.getElementById('regEmail').value.trim(), password:document.getElementById('regPassword').value, full_name:document.getElementById('regName').value.trim(), role:document.getElementById('regRole').value};
+  try{ await api('/v1/auth/register',{method:'POST', body:JSON.stringify(payload)}); toast('Account created — please sign in'); switchAuth('login'); document.getElementById('loginEmail').value=payload.email; }catch(err){ toast(err.message,'err');}
+}
+function logout(){ token=null; user=null; localStorage.removeItem('token'); localStorage.removeItem('user'); updateAuthUI(); toast('Logged out');}
+
+// --- projects
+async function loadProjects(){
+  try{
+    const list=await api('/v1/projects');
+    const sel=document.getElementById('projectSelector'); sel.innerHTML='<option value="">Select project…</option>';
+    const grid=document.getElementById('projectsGrid');
+    grid.innerHTML=''; document.getElementById('navProjectsCount').textContent=list.length;
+    if(!list.length) grid.innerHTML='<div class="col-span-full p-8 text-center text-slate-500 bg-white dark:bg-slate-900 rounded-2xl border border-dashed">No projects yet — create one.</div>';
+    list.forEach(p=>{
+      sel.innerHTML+=`<option value="${p.id}" ${p.id===currentProject?'selected':''}>${p.name} • ${p.paper_count} papers</option>`;
+      grid.innerHTML+=`<div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-soft"><div class="flex items-start justify-between"><div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-violet-600 grid place-items-center text-white"><i class="fa-solid fa-folder"></i></div><span class="text-xs px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 font-mono">${p.domain}</span></div><div class="font-bold mt-3">${p.name}</div><div class="text-xs text-slate-500 font-mono truncate">${p.id}</div><div class="mt-3 flex gap-2 text-xs"><span class="px-2 py-1 rounded-full bg-red-50 text-red-700">${p.paper_count} papers</span><span class="px-2 py-1 rounded-full bg-blue-50 text-blue-700">${p.run_count} runs</span></div><div class="mt-4 flex gap-2"><button onclick="selectProject('${p.id}')" class="flex-1 py-2 rounded-xl bg-slate-900 dark:bg-white dark:text-slate-900 text-white text-sm font-semibold">Select</button><button onclick="deleteProject('${p.id}')" class="px-3 py-2 rounded-xl border text-sm"><i class="fa-solid fa-trash"></i></button></div></div>`;
+    });
+    if(!currentProject && list.length) selectProject(list[0].id);
+    // papers dropdown & synthesis papers
+    const paperSel=document.getElementById('extractionPaper'); if(paperSel) { /* will be filled on Papers load */ }
+  }catch(err){ /* not authenticated? */ }
+}
+function selectProject(id){ currentProject=id; localStorage.setItem('projectId', id); document.getElementById('projectSelector').value=id; toast('Project selected'); loadPapers(); loadOverview(); }
+async function createProject(){
+  const name=document.getElementById('newProjectName').value.trim();
+  const domain=document.getElementById('newProjectDomain').value;
+  const retention=parseInt(document.getElementById('newProjectRetention').value||'90');
+  if(!name) return toast('Name required','err');
+  try{
+    const p=await api('/v1/projects',{method:'POST', body:JSON.stringify({name,domain,retention_days:retention})});
+    document.getElementById('createProjectModal').classList.add('hidden'); toast('Project created'); selectProject(p.id); loadProjects();
+  }catch(err){ toast(err.message,'err');}
+}
+async function deleteProject(id){ if(!confirm('Delete project? Papers and runs will be deleted.')) return; try{ await api('/v1/projects/'+id,{method:'DELETE'}); toast('Deleted'); if(currentProject===id) { currentProject=''; localStorage.removeItem('projectId'); } loadProjects(); }catch(e){ toast(e.message,'err'); }}
+
+// --- overview
+async function loadOverview(){
+  if(!currentProject) return;
+  try{
+    const stats=await api('/v1/dashboard/projects/'+currentProject+'/stats');
+    document.getElementById('statPapers').textContent = stats.total_papers;
+    document.getElementById('statRuns').textContent = stats.total_runs;
+    document.getElementById('statEvidence').textContent = stats.total_evidence;
+    document.getElementById('statClaims').textContent = stats.total_runs ? '—' : '—';
+    document.getElementById('providerBadge').textContent = 'openrouter • balanced • SQLite';
+    const box=document.getElementById('overviewRuns');
+    if(stats.recent_runs && stats.recent_runs.length){
+      box.innerHTML = stats.recent_runs.map(r=>`<div class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border"><span class="px-2 py-1 rounded-full text-xs font-bold ${r.status==='completed'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}">${r.status}</span><span class="flex-1 truncate font-mono text-xs">${r.request_text}</span><span class="text-xs text-slate-500">${r.total_tool_calls} tools</span></div>`).join('');
+    }
+  }catch(e){}
+  try{
+    const h=await api('/healthz');
+    document.getElementById('healthDot').textContent='health: '+h.status; document.getElementById('healthDot').classList.remove('hidden');
+  }catch(e){}
+}
+
+// --- papers
+function handleDrop(e){ e.preventDefault(); e.currentTarget.classList.remove('border-brand-500'); if(e.dataTransfer.files.length) uploadPapers(e.dataTransfer.files); }
+async function uploadPapers(files){
+  if(!currentProject) return toast('Select a project first','err');
+  if(!files.length) return;
+  const prog=document.getElementById('uploadProgress'); prog.classList.remove('hidden'); prog.textContent='Uploading '+files.length+' file(s)…';
+  for(let i=0;i<files.length;i++){
+    const f=files[i]; if(!f.name.toLowerCase().endsWith('.pdf')) { toast(f.name+' is not a PDF','err'); continue; }
+    const fd=new FormData(); fd.append('file', f);
+    const title=document.getElementById('paperTitle').value.trim(); if(title) fd.append('title', title);
+    const authors=document.getElementById('paperAuthors').value.trim(); if(authors) fd.append('authors', JSON.stringify(authors.split(',').map(s=>s.trim())));
+    try{
+      prog.textContent=`Uploading ${f.name} (${i+1}/${files.length})…`;
+      const j=await apiForm('/v1/projects/'+currentProject+'/papers', fd);
+      toast(j.message || 'Uploaded'); prog.textContent=j.status==='duplicate'?'Duplicate detected — SHA-256 matched, not created':'Uploaded '+f.name;
+    }catch(err){ prog.textContent='Error: '+err.message; toast(err.message,'err'); }
+  }
+  prog.classList.add('hidden'); loadPapers();
+}
+async function loadPapers(){
+  if(!currentProject) { document.getElementById('papersTable').innerHTML=''; document.getElementById('papersEmpty').classList.remove('hidden'); return; }
+  const status=document.getElementById('paperStatusFilter').value;
+  const q=document.getElementById('paperSearch').value.trim();
+  let url='/v1/projects/'+currentProject+'/papers?page=1&page_size=20';
+  if(status) url+='&status_filter='+status;
+  try{
+    const j=await api(url);
+    document.getElementById('papersCount').textContent = j.total+' papers';
+    document.getElementById('navPapersCount').textContent = j.total;
+    document.getElementById('statPapers').textContent = j.total;
+    const tbody=document.getElementById('papersTable');
+    const empty=document.getElementById('papersEmpty');
+    if(!j.papers.length){ tbody.innerHTML=''; empty.classList.remove('hidden'); return; }
+    empty.classList.add('hidden');
+    tbody.innerHTML = j.papers.map(p=>`<tr class="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"><td class="px-4 py-3"><div class="font-semibold truncate max-w-[280px]">${p.title}</div><div class="text-xs text-slate-500 font-mono truncate max-w-[280px]">${p.paper_id}</div></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-bold ${p.status==='parsed'?'bg-emerald-50 text-emerald-700 border border-emerald-200':p.status==='failed'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-700'}">${p.status}</span></td><td class="px-4 py-3 font-mono text-xs">${p.page_count??'—'}</td><td class="px-4 py-3 text-xs font-mono">${p.parser_version}</td><td class="px-4 py-3 font-mono text-xs truncate max-w-[120px]">${p.paper_id.slice(0,8)}…</td><td class="px-4 py-3 text-right"><div class="flex justify-end gap-1"><button onclick="openPaper('${p.paper_id}')" class="w-8 h-8 grid place-items-center rounded-xl bg-white dark:bg-slate-800 border hover:bg-slate-50"><i class="fa-solid fa-eye text-xs"></i></button><button onclick="quickExtract('${p.paper_id}')" class="w-8 h-8 grid place-items-center rounded-xl bg-violet-600 text-white"><i class="fa-solid fa-wand-magic-sparkles text-xs"></i></button></div></td></tr>`).join('');
+    // populate extraction dropdown
+    const sel=document.getElementById('extractionPaper'); if(sel){ sel.innerHTML='<option value="">Select paper…</option>'+ j.papers.map(p=>`<option value="${p.paper_id}">${p.title.slice(0,60)}</option>`).join(''); }
+    // populate synthesis multi-select
+    const synthBox=document.getElementById('synthesisPapers'); if(synthBox){ synthBox.innerHTML = j.papers.map(p=>`<label class="flex items-center gap-2 p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded"><input type="checkbox" value="${p.paper_id}" class="synthPaperCb rounded"> <span class="truncate">${p.title.slice(0,40)}</span><span class="ml-auto text-xs font-mono bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">${p.status}</span></label>`).join(''); }
+  }catch(err){ toast(err.message,'err'); }
+}
+async function openPaper(paperId){
+  try{
+    const paper=await api('/v1/projects/'+currentProject+'/papers/'+paperId);
+    document.getElementById('paperDetailTitle').textContent=paper.title;
+    document.getElementById('paperDetailMeta').textContent=`${paper.status} • ${paper.page_count||'?'} pages • ${paper.parser_version} • ${new Date(paper.created_at).toLocaleString()}`;
+    document.getElementById('paperDetail').classList.remove('hidden');
+    document.getElementById('paperDetail').dataset.paperId=paperId;
+    const pages=await api('/v1/projects/'+currentProject+'/papers/'+paperId+'/pages');
+    document.getElementById('paperDetailBody').innerHTML = `<div class="flex gap-2 mb-3">${pages.pages.map((_,i)=>`<button onclick="showPage(${i})" class="px-2 py-1 rounded-full border text-xs ${i===0?'bg-brand-600 text-white':''}">p${i+1}</button>`).join('')}</div><div id="pageContent" class="max-h-64 overflow-auto p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border font-mono text-xs whitespace-pre-wrap">${(pages.pages[0]?.text||'').slice(0,2000)}</div>`;
+    window._pages = pages.pages;
+  }catch(err){ toast(err.message,'err');}
+}
+function showPage(i){ const p=window._pages[i]; document.getElementById('pageContent').textContent=(p.text||'').slice(0,4000); }
+function viewCurrentPages(){ const id=document.getElementById('paperDetail').dataset.paperId; api('/v1/projects/'+currentProject+'/papers/'+id+'/pages').then(j=>{
+  document.getElementById('pagesModalBody').innerHTML = j.pages.map(pg=>`<div class="border rounded-xl overflow-hidden"><div class="px-4 py-2 bg-slate-50 dark:bg-slate-800 flex items-center justify-between"><span class="font-bold text-sm">Page ${pg.page_number}</span><span class="text-xs px-2 py-1 rounded-full bg-white dark:bg-slate-700 border">${pg.section_label||'—'}</span><span class="text-xs font-mono">${pg.char_count} chars</span></div><div class="p-4 font-mono text-xs whitespace-pre-wrap max-h-56 overflow-auto bg-white dark:bg-slate-900">${pg.text.slice(0,3000)}</div></div>`).join('');
+  document.getElementById('pagesModal').classList.remove('hidden');
+});}
+function quickExtract(paperId){ navigate('extraction'); document.getElementById('extractionPaper').value=paperId; }
+function extractCurrentPaper(){ const id=document.getElementById('paperDetail').dataset.paperId; quickExtract(id); }
+
+// --- retrieval
+document.getElementById('retrievalTopK')?.addEventListener('input', e=>document.getElementById('retrievalTopKVal').textContent=e.target.value);
+document.getElementById('retrievalThreshold')?.addEventListener('input', e=>document.getElementById('retrievalThresholdVal').textContent=parseFloat(e.target.value).toFixed(2));
+document.getElementById('bm25Weight')?.addEventListener('input', e=>{ document.getElementById('bm25WeightVal').textContent=e.target.value; document.getElementById('semanticWeight').value=(1-parseFloat(e.target.value)).toFixed(1); document.getElementById('semanticWeightVal').textContent=(1-parseFloat(e.target.value)).toFixed(1); });
+document.getElementById('semanticWeight')?.addEventListener('input', e=>{ document.getElementById('semanticWeightVal').textContent=e.target.value; document.getElementById('bm25Weight').value=(1-parseFloat(e.target.value)).toFixed(1); document.getElementById('bm25WeightVal').textContent=(1-parseFloat(e.target.value)).toFixed(1); });
+async function doSearch(){
+  const query=document.getElementById('retrievalQuery').value.trim();
+  if(!query) return toast('Enter a query','err');
+  const payload={
+    query,
+    search_type: currentSearchType,
+    top_k: parseInt(document.getElementById('retrievalTopK').value),
+    score_threshold: parseFloat(document.getElementById('retrievalThreshold').value),
+    bm25_weight: parseFloat(document.getElementById('bm25Weight').value),
+    semantic_weight: parseFloat(document.getElementById('semanticWeight').value),
+    project_id: currentProject || undefined,
+    author: document.getElementById('filterAuthor').value.trim() || undefined,
+    year_from: document.getElementById('filterYearFrom').value ? parseInt(document.getElementById('filterYearFrom').value) : undefined,
+    year_to: document.getElementById('filterYearTo').value ? parseInt(document.getElementById('filterYearTo').value) : undefined,
+    topic: document.getElementById('filterTopic').value.trim() || undefined,
+  };
+  try{
+    const j=await api('/v1/search',{method:'POST', body:JSON.stringify(payload)});
+    document.getElementById('retrievalStats').classList.remove('hidden');
+    document.getElementById('retrievalTook').textContent=j.took_ms+' ms';
+    document.getElementById('retrievalTotal').textContent=j.total+' hits • '+j.search_type;
+    document.getElementById('retrievalNotEnough').classList.toggle('hidden', !j.not_enough_evidence);
+    const box=document.getElementById('retrievalResults');
+    if(!j.hits.length) box.innerHTML='<div class="p-8 text-center text-slate-500 bg-white dark:bg-slate-900 rounded-2xl border border-dashed">No evidence — try lowering threshold or changing query.</div>';
+    else box.innerHTML=j.hits.map(h=>`<div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-soft"><div class="flex items-start justify-between gap-4"><div class="flex-1"><div class="flex flex-wrap gap-2 text-xs"><span class="px-2 py-1 rounded-full bg-brand-50 text-brand-700 font-mono">${h.evidence_id}</span><span class="px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800">p${h.page_number} ${h.section_label? '• '+h.section_label:''}</span><span class="px-2 py-1 rounded-full ${h.search_type==='hybrid'?'bg-emerald-50 text-emerald-700':'bg-slate-100'}">${h.search_type}</span><span class="px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-mono">score ${h.score.toFixed(3)}</span></div><div class="font-semibold mt-2 text-sm">${h.paper_title}</div><div class="text-xs text-slate-500 font-mono truncate">${h.paper_id}</div></div><button onclick="navigator.clipboard.writeText('${h.evidence_id}'); toast('Copied '+h.evidence_id)" class="w-8 h-8 grid place-items-center rounded-xl border hover:bg-slate-50"><i class="fa-regular fa-copy text-xs"></i></button></div><div class="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border text-sm leading-relaxed">${h.text}</div><div class="mt-2 flex gap-2 text-xs"><span class="px-2 py-1 rounded-full bg-white dark:bg-slate-800 border">Evidence ID stable</span><span class="px-2 py-1 rounded-full bg-white dark:bg-slate-800 border">Page ${h.page_number}</span></div></div>`).join('');
+  }catch(err){ toast(err.message,'err');}
+}
+
+// --- extraction
+(function initClaimPills(){
+  const types=['research_problem','dataset','preprocessing','model','metrics','results','limitations','future_work'];
+  const box=document.getElementById('claimTypesPills');
+  if(!box) return;
+  box.innerHTML=types.map(t=>`<label class="cursor-pointer"><input type="checkbox" value="${t}" class="peer sr-only"><span class="px-3 py-1.5 rounded-full border bg-white dark:bg-slate-900 peer-checked:bg-violet-600 peer-checked:text-white peer-checked:border-violet-600 text-xs font-medium">${t}</span></label>`).join('');
+})();
+function extractAllTypes(){ document.querySelectorAll('#claimTypesPills input').forEach(i=>i.checked=true); }
+function clearExtraction(){ document.querySelectorAll('#claimTypesPills input').forEach(i=>i.checked=false); }
+async function doExtraction(){
+  const paperId=document.getElementById('extractionPaper').value;
+  if(!paperId) return toast('Select a paper','err');
+  if(!currentProject) return toast('Select a project','err');
+  const checked=[...document.querySelectorAll('#claimTypesPills input:checked')].map(i=>i.value);
+  const payload={paper_id:paperId, claim_types:checked, force_reextract:document.getElementById('extractionForce').checked};
+  const chunkIds=document.getElementById('extractionChunkIds').value.trim(); if(chunkIds) payload.chunk_ids=chunkIds.split(',').map(s=>s.trim());
+  const bar=document.getElementById('extractionProgressBar'); const txt=document.getElementById('extractionProgressText'); const prog=document.getElementById('extractionProgress');
+  prog.classList.remove('hidden'); bar.style.width='15%'; txt.textContent='Calling LLM (OpenRouter → qwen3-coder:30b fallback)…';
+  try{
+    const j=await api('/v1/projects/'+currentProject+'/papers/'+paperId+'/extraction',{method:'POST', body:JSON.stringify(payload)});
+    bar.style.width='100%'; txt.textContent='Done • '+j.length+' claims';
+    const box=document.getElementById('extractionResults');
+    if(!j.length) box.innerHTML='<div class="p-6 text-center text-slate-500 bg-white dark:bg-slate-900 rounded-2xl border border-dashed">No claims — check paper is parsed.</div>';
+    else{
+      const byType={}; j.forEach(c=>{ (byType[c.claim_type]=byType[c.claim_type]||[]).push(c);});
+      box.innerHTML=Object.entries(byType).map(([type,claims])=>`<div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"><div class="px-5 py-3 bg-slate-50 dark:bg-slate-800 border-b flex items-center justify-between"><span class="font-bold text-sm">${type}</span><span class="text-xs px-2 py-1 rounded-full bg-violet-50 text-violet-700">${claims.length}</span></div><div class="divide-y">${claims.map(c=>`<div class="p-4"><div class="flex items-start justify-between gap-3"><div class="flex-1"><div class="font-medium text-sm">${c.claim_text}</div><div class="mt-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800 border font-mono text-xs whitespace-pre-wrap max-h-32 overflow-auto">${JSON.stringify(c.normalized_value,null,2)}</div><div class="mt-2 flex flex-wrap gap-2">${c.evidence_ids.map(e=>`<span class="px-2 py-1 rounded-full bg-brand-50 text-brand-700 font-mono text-xs">${e}</span>`).join('') || '<span class="text-xs text-slate-500">No evidence yet — link via retrieval</span>'}</div></div><span class="shrink-0 px-2 py-1 rounded-full text-xs font-bold ${c.confidence>0.8?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}">${(c.confidence*100).toFixed(0)}%</span></div></div>`).join('')}</div></div>`).join('');
+    }
+  }catch(err){ toast(err.message,'err'); txt.textContent='Error: '+err.message; bar.style.width='0%'; }
+  setTimeout(()=>prog.classList.add('hidden'), 3500);
+}
+
+// --- synthesis
+(function initSynthesisTypes(){
+  const types=['model','dataset','metrics','preprocessing','results','limitations'];
+  const box=document.getElementById('synthesisTypes');
+  if(!box) return;
+  box.innerHTML=types.map(t=>`<label class="flex items-center gap-2 p-2 rounded-xl border bg-white dark:bg-slate-900 cursor-pointer hover:bg-slate-50"><input type="checkbox" value="${t}" checked class="rounded"> <span class="text-sm font-medium">${t}</span></label>`).join('');
+})();
+async function doSynthesis(){
+  if(!currentProject) return toast('Select project','err');
+  const paperIds=[...document.querySelectorAll('.synthPaperCb:checked')].map(i=>i.value);
+  if(paperIds.length<1) return toast('Select at least 1 paper','err');
+  const comparison_types=[...document.querySelectorAll('#synthesisTypes input:checked')].map(i=>i.value);
+  const payload={project_id:currentProject, paper_ids:paperIds, comparison_types, include_gaps:document.getElementById('synthesisGaps').checked, include_conflicts:document.getElementById('synthesisConflicts').checked};
+  try{
+    const j=await api('/v1/projects/'+currentProject+'/synthesis',{method:'POST', body:JSON.stringify(payload)});
+    const box=document.getElementById('synthesisResults');
+    let html='';
+    if(j.comparison_tables && j.comparison_tables.length){
+      html+=`<div class="space-y-4">${j.comparison_tables.map(t=>`<div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft overflow-hidden"><div class="px-6 py-4 border-b bg-slate-50 dark:bg-slate-800 flex items-center justify-between"><h3 class="font-bold">${t.comparison_type} • ${t.paper_ids.length} papers</h3><span class="text-xs font-mono bg-white dark:bg-slate-900 border px-2 py-1 rounded-full">${t.table_id.slice(0,8)}</span></div><div class="overflow-auto"><table class="w-full text-sm"><thead class="bg-slate-50 dark:bg-slate-800 text-xs uppercase tracking-wide text-slate-500"><tr><th class="text-left px-4 py-2">Attribute</th>${t.paper_ids.map((_,i)=>`<th class="text-left px-4 py-2">Paper ${i+1}</th>`).join('')}<th class="text-left px-4 py-2">Conflict</th></tr></thead><tbody class="divide-y">${t.rows.map(r=>`<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50"><td class="px-4 py-3 font-medium">${r.attribute}</td>${r.cells.map(c=>`<td class="px-4 py-3"><div class="font-mono text-xs">${typeof c.value.value==='object'? JSON.stringify(c.value.value): c.value.value}</div><div class="text-xs text-slate-500">conf ${ (c.value.confidence*100).toFixed(0)}% • ${c.evidence_ids.slice(0,2).join(', ')}</div></td>`).join('')}<td class="px-4 py-3">${r.has_conflicts?'<span class="px-2 py-1 rounded-full bg-red-50 text-red-700 text-xs">⚠ '+r.conflict_details+'</span>': '<span class="text-slate-400">—</span>'}</td></tr>`).join('')}</tbody></table></div></div>`).join('')}</div>`;
+    }
+    if(j.conflicts && j.conflicts.length) html+=`<div class="bg-white dark:bg-slate-900 rounded-2xl border border-red-200 dark:border-red-900 p-6"><h3 class="font-bold text-red-700 dark:text-red-300"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Conflicts (${j.conflicts.length})</h3><div class="mt-3 space-y-2">${j.conflicts.map(c=>`<div class="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-sm"><div class="font-semibold">${c.conflict_type} • ${c.severity}</div><div class="text-slate-600 dark:text-slate-300">${c.description}</div><div class="text-xs font-mono mt-1">${JSON.stringify(c.details).slice(0,200)}</div></div>`).join('')}</div></div>`;
+    if(j.gaps && j.gaps.length) html+=`<div class="bg-white dark:bg-slate-900 rounded-2xl border border-amber-200 dark:border-amber-900 p-6"><h3 class="font-bold text-amber-700 dark:text-amber-300"><i class="fa-solid fa-lightbulb mr-2"></i>Gaps (${j.gaps.length})</h3><div class="mt-3 grid gap-2">${j.gaps.map(g=>`<div class="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-sm"><div class="font-semibold">${g.gap_type} • freq ${g.frequency} • ${g.severity}</div><div>${g.description}</div><div class="text-xs text-slate-500">${g.evidence_ids.join(', ')}</div></div>`).join('')}</div></div>`;
+    box.innerHTML = html || '<div class="p-8 text-center text-slate-500 bg-white dark:bg-slate-900 rounded-2xl border border-dashed">No tables — check claims exist.</div>';
+    toast('Synthesis complete');
+  }catch(err){ toast(err.message,'err');}
+}
+
+// --- verification
+let covChart;
+function renderCoverage(verified, partial, unsupported, opinion){
+  const ctx=document.getElementById('coverageChart').getContext('2d');
+  if(covChart) covChart.destroy();
+  covChart=new Chart(ctx,{type:'doughnut', data:{labels:['Verified','Partial','Unsupported','Opinion'], datasets:[{data:[verified,partial,unsupported,opinion], backgroundColor:['#10b981','#f59e0b','#ef4444','#64748b']}]}, options:{plugins:{legend:{position:'bottom', labels:{usePointStyle:true, font:{size:11}}}} }});
+}
+async function doVerification(){
+  const draft=document.getElementById('verificationDraft').value.trim();
+  if(!draft) return toast('Enter draft text','err');
+  const evidence=document.getElementById('verificationEvidence').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const payload={draft_text:draft, evidence_ids:evidence, paper_ids: currentProject? [currentProject]: undefined, strict_mode:document.getElementById('verificationStrict').checked};
+  try{
+    const j=await api('/v1/projects/'+(currentProject||'00000000-0000-0000-0000-000000000000')+'/verification/verify',{method:'POST', body:JSON.stringify(payload)});
+    document.getElementById('verificationCoverage').textContent=(j.citation_coverage*100).toFixed(1)+'%';
+    document.getElementById('cntVerified').textContent=j.verified_claims;
+    document.getElementById('cntPartial').textContent=j.partially_verified_claims;
+    document.getElementById('cntUnsupported').textContent=j.unsupported_claims_count;
+    document.getElementById('cntOpinion').textContent=j.opinion_claims;
+    renderCoverage(j.verified_claims, j.partially_verified_claims, j.unsupported_claims_count, j.opinion_claims);
+    const box=document.getElementById('verificationResults');
+    box.innerHTML=j.atomic_claims.map(c=>`<div class="bg-white dark:bg-slate-900 rounded-2xl border p-4 ${c.status==='verified'?'border-emerald-200':c.status==='unsupported'?'border-red-200':'border-amber-200'}"><div class="flex items-start justify-between gap-3"><div class="flex-1"><div class="text-sm">${c.claim_text}</div><div class="text-xs text-slate-500 mt-1">${c.claim_type} • confidence ${(c.confidence*100).toFixed(0)}% • ${c.rationale||''}</div><div class="mt-2 flex flex-wrap gap-1">${c.supporting_evidence.map(e=>`<span class="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-mono text-xs">${e.slice(0,40)}</span>`).join('')}${c.contradicting_evidence.map(e=>`<span class="px-2 py-1 rounded-full bg-red-50 text-red-700 font-mono text-xs">${e.slice(0,40)}</span>`).join('')}</div></div><span class="shrink-0 px-2.5 py-1 rounded-full text-xs font-bold ${c.status==='verified'?'bg-emerald-600 text-white':c.status==='partially_verified'?'bg-amber-500 text-white':c.status==='unsupported'?'bg-red-600 text-white':'bg-slate-200'}">${c.status}</span></div></div>`).join('');
+    if(j.unsupported_claims && j.unsupported_claims.length) box.innerHTML+=`<div class="p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-sm"><div class="font-bold text-red-700">Unsupported</div><ul class="list-disc ml-5 mt-1">${j.unsupported_claims.map(x=>`<li>${x}</li>`).join('')}</ul></div>`;
+  }catch(err){ toast(err.message,'err');}
+}
+async function doReport(){
+  if(!currentProject) return toast('Select project','err');
+  const paperIds=document.getElementById('reportPapers').value.split(',').map(s=>s.trim()).filter(Boolean);
+  if(!paperIds.length) return toast('Enter paper IDs','err');
+  const payload={
+    project_id: currentProject,
+    paper_ids: paperIds,
+    synthesis_id: document.getElementById('reportSynthesisId').value.trim() || null,
+    include_comparison_tables: document.getElementById('reportTables').checked,
+    include_gaps: document.getElementById('reportGaps').checked,
+    include_conflicts: document.getElementById('reportConflicts').checked,
+    include_uncertainty: document.getElementById('reportUncertainty').checked,
+  };
+  try{
+    const j=await api('/v1/projects/'+currentProject+'/verification/report',{method:'POST', body:JSON.stringify(payload)});
+    const view=document.getElementById('reportView'); view.classList.remove('hidden');
+    view.innerHTML = `<div class="prose prose-sm dark:prose-invert max-w-none"><h2>${j.title}</h2><div class="text-xs text-slate-500">Report ${j.report_id} • ${new Date(j.generated_at).toLocaleString()} • ${j.citations.length} citations</div><div class="mt-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border font-mono text-xs">${j.evidence_ids.join(', ')}</div>${j.sections.map(s=>`<h3>${s.title}</h3><div class="whitespace-pre-wrap">${s.content}</div><div class="text-xs text-slate-500">${s.citations.join(', ')}</div>`).join('')}${j.uncertainty_section?'<h3>Uncertainty</h3><div class="whitespace-pre-wrap">'+j.uncertainty_section+'</div>':''}</div>`;
+    toast('Report generated');
+  }catch(err){ toast(err.message,'err');}
+}
+
+// --- evaluation
+async function loadBenchmarkMeta(){
+  try{
+    const cats=await api('/v1/evaluation/benchmark/categories');
+    const box=document.getElementById('evalCategories');
+    box.innerHTML=cats.map(c=>`<label class="text-sm flex items-center gap-1.5"><input type="checkbox" value="${c.value}" checked class="evalCat"> ${c.label}</label>`).join('');
+  }catch(e){}
+}
+async function runEvaluation(){
+  const payload={
+    benchmark_version: document.getElementById('evalVersion').value,
+    model_profile: document.getElementById('evalModel').value,
+    system_type: document.getElementById('evalSystem').value,
+    categories: [...document.querySelectorAll('.evalCat:checked')].map(i=>i.value),
+    difficulties: [...document.querySelectorAll('.evalDiff:checked')].map(i=>i.value),
+  };
+  try{
+    toast('Running evaluation… (mock, 20 tasks)');
+    const j=await api('/v1/evaluation/run',{method:'POST', body:JSON.stringify(payload)});
+    document.getElementById('evalSummary').innerHTML=`<div class="bg-white dark:bg-slate-900 rounded-2xl border p-5"><div class="text-xs uppercase tracking-wide font-bold text-slate-500">Success</div><div class="text-2xl font-extrabold">${(j.task_success_rate*100).toFixed(1)}%</div><div class="text-xs text-slate-500">${j.completed_tasks}/${j.total_tasks} tasks</div></div><div class="bg-white dark:bg-slate-900 rounded-2xl border p-5"><div class="text-xs uppercase tracking-wide font-bold text-slate-500">Citation P</div><div class="text-2xl font-extrabold">${(j.citation_precision*100).toFixed(1)}%</div></div><div class="bg-white dark:bg-slate-900 rounded-2xl border p-5"><div class="text-xs uppercase tracking-wide font-bold text-slate-500">Unsupported</div><div class="text-2xl font-extrabold">${(j.unsupported_claim_rate*100).toFixed(1)}%</div></div>`;
+    loadEvalRuns();
+  }catch(err){ toast(err.message,'err');}
+}
+async function loadEvalRuns(){
+  try{
+    const list=await api('/v1/evaluation/runs');
+    document.getElementById('evalRunsTable').innerHTML=list.map(r=>`<tr class="border-t"><td class="px-3 py-2 font-mono text-xs">${r.run_id||r.evaluation_run_id||'—'}</td><td class="px-3 py-2">${r.system_type}</td><td class="px-3 py-2">${(r.task_success_rate*100).toFixed(0)}%</td><td class="px-3 py-2">${(r.citation_precision*100).toFixed(0)}%</td><td class="px-3 py-2">${r.completed_tasks}/${r.total_tasks}</td></tr>`).join('') || '<tr><td colspan="5" class="px-3 py-6 text-center text-slate-500">No runs yet</td></tr>';
+  }catch(e){}
+}
+
+// --- trace
+let traceRunsCache=[];
+async function loadRuns(){
+  if(!currentProject) return;
+  try{
+    const j=await api('/v1/dashboard/projects/'+currentProject+'/runs?page=1&page_size=20');
+    traceRunsCache=j.runs||[];
+    document.getElementById('traceCount').textContent=j.total+' runs • page '+j.page+'/'+j.total_pages;
+    renderTraceTable(traceRunsCache);
+  }catch(err){ toast(err.message,'err');}
+}
+function renderTraceTable(runs){
+  const tbody=document.getElementById('traceRunsTable');
+  if(!runs.length){ tbody.innerHTML='<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">No runs — extraction & synthesis create traces.</td></tr>'; return;}
+  tbody.innerHTML=runs.map(r=>`<tr class="border-t hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onclick="openTrace('${r.run_id}')"><td class="px-4 py-3"><div class="font-mono text-xs truncate max-w-[260px]">${r.run_id}</div><div class="text-xs text-slate-500 truncate max-w-[260px]">${r.request_text}</div></td><td class="px-4 py-2"><span class="px-2 py-1 rounded-full text-xs font-bold ${r.status==='completed'?'bg-emerald-50 text-emerald-700':r.status==='failed'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-700'}">${r.status}</span></td><td class="px-4 py-2 font-mono text-xs">${r.total_latency_ms}ms</td><td class="px-4 py-2 font-mono text-xs">${r.total_tool_calls}</td><td class="px-4 py-2 font-mono text-xs">${r.evidence_count}</td><td class="px-4 py-2 text-xs">${r.model_profile}</td></tr>`).join('');
+}
+function filterRuns(){
+  const q=document.getElementById('traceSearch').value.toLowerCase();
+  const s=document.getElementById('traceStatusFilter').value;
+  let filtered=traceRunsCache.filter(r=> (!q || r.request_text.toLowerCase().includes(q)) && (!s || r.status===s));
+  renderTraceTable(filtered);
+}
+let latencyChart;
+async function openTrace(runId){
+  try{
+    const t=await api('/v1/dashboard/runs/'+runId+'/trace');
+    document.getElementById('traceDetail').classList.remove('hidden');
+    document.getElementById('traceTitle').textContent='Run '+t.run_id;
+    document.getElementById('traceSubtitle').textContent=t.request_text+' • '+t.status+' • '+t.model_profile;
+    document.getElementById('traceBudgets').innerHTML=Object.entries(t.budgets).filter(([k,v])=>v!=null).map(([k,v])=>`<span class="px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-xs font-mono">${k}: ${v}</span>`).join('');
+    document.getElementById('traceLatency').textContent=t.total_latency_ms+' ms';
+    document.getElementById('traceToolCalls').textContent=t.total_tool_calls;
+    document.getElementById('traceEvidenceCount').textContent=t.evidence_ids.length;
+    document.getElementById('traceModel').textContent=t.model_profile;
+    document.getElementById('traceEvidenceChips').innerHTML=t.evidence_ids.slice(0,12).map(e=>`<span class="px-2 py-1 rounded-full bg-brand-50 text-brand-700 font-mono text-xs">${e}</span>`).join('') + (t.evidence_ids.length>12?`<span class="text-xs text-slate-500">+${t.evidence_ids.length-12} more</span>`:'');
+    // latency chart
+    const ctx=document.getElementById('latencyChart').getContext('2d');
+    if(latencyChart) latencyChart.destroy();
+    latencyChart=new Chart(ctx,{type:'line', data:{labels:t.trace_events.map(e=>e.sequence_no), datasets:[{label:'latency ms', data:t.trace_events.map(e=>e.latency_ms||0), borderColor:'#6366f1', tension:0.3, fill:false}]}, options:{plugins:{legend:{display:false}}, scales:{x:{title:{display:true,text:'sequence'}}, y:{title:{display:true,text:'ms'}}}}});
+    // timeline
+    const tl=document.getElementById('traceTimeline');
+    tl.innerHTML=t.trace_events.map(e=>`<div class="flex gap-4"><div class="flex flex-col items-center"><div class="w-3 h-3 rounded-full ${e.status==='success'?'bg-emerald-500':e.status==='error'?'bg-red-500':'bg-amber-500'}"></div><div class="flex-1 w-px timeline-line my-1"></div></div><div class="flex-1 pb-6"><div class="bg-white dark:bg-slate-900 rounded-xl border p-3"><div class="flex items-center gap-2 text-xs"><span class="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">#${e.sequence_no}</span><span class="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-mono">${e.event_type}</span><span class="px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">${e.component}</span><span class="ml-auto font-mono">${e.latency_ms||0} ms</span><span class="px-2 py-0.5 rounded-full ${e.status==='success'?'bg-emerald-50 text-emerald-700':'bg-red-50 text-red-700'}">${e.status}</span></div><div class="mt-2 grid md:grid-cols-2 gap-2 text-xs"><div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="font-bold uppercase tracking-wide text-[10px] text-slate-500">Input</div><pre class="whitespace-pre-wrap font-mono">${JSON.stringify(e.input_summary,null,2).slice(0,600)}</pre></div><div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800 border"><div class="font-bold uppercase tracking-wide text-[10px] text-slate-500">Output</div><pre class="whitespace-pre-wrap font-mono">${JSON.stringify(e.output_summary,null,2).slice(0,600)}</pre></div></div>${e.evidence_ids.length?'<div class="mt-2 flex flex-wrap gap-1">'+e.evidence_ids.map(id=>'<span class="px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 font-mono text-xs">'+id+'</span>').join('')+'</div>':''}</div></div></div>`).join('');
+    // events table
+    document.getElementById('traceEventsTable').innerHTML=t.trace_events.map(e=>`<tr class="border-t hover:bg-slate-50 dark:hover:bg-slate-800/50"><td class="px-4 py-2 font-mono text-xs">#${e.sequence_no}</td><td class="px-4 py-2"><span class="px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-xs">${e.event_type}</span></td><td class="px-4 py-2 text-xs">${e.component}${e.action? ' • '+e.action:''}</td><td class="px-4 py-2"><span class="px-2 py-1 rounded-full text-xs ${e.status==='success'?'bg-emerald-50 text-emerald-700':'bg-red-50 text-red-700'}">${e.status}</span></td><td class="px-4 py-2 font-mono text-xs">${e.latency_ms||0}</td><td class="px-4 py-2"><div class="flex flex-wrap gap-1">${e.evidence_ids.map(id=>`<span class="px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 font-mono text-[10px]">${id}</span>`).join('')}</div></td><td class="px-4 py-2"><button onclick="alert(JSON.stringify(${JSON.stringify(e.input_summary).replace(/"/g,'&quot;')},null,2)+JSON.stringify(${JSON.stringify(e.output_summary).replace(/"/g,'&quot;')},null,2))" class="text-xs text-brand-600">view</button></td></tr>`).join('');
+    toast('Trace loaded • '+t.trace_events.length+' events');
+  }catch(err){ toast(err.message,'err');}
+}
+function filterTrace(){
+  // simple client filter would re-fetch with query params; for now re-open
+}
+
+// --- settings
+async function loadSettings(){
+  try{
+    const h=await api('/healthz');
+    document.getElementById('settingsProvider').textContent = h.environment + ' • ' + (h.checks.database||'ok');
+    document.getElementById('settingsProviderBadge').textContent = localStorage.getItem('projectId') ? 'project selected' : 'no project';
+    document.getElementById('settingsProviderBadge').className = 'px-2 py-1 rounded-full text-xs font-bold ' + (localStorage.getItem('projectId')?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700');
+  }catch(e){}
+}
+async function testProvider(which){
+  try{
+    const j=await api('/healthz'); toast(which+' • '+j.status);
+  }catch(err){ toast(err.message,'err');}
+}
+
+// --- init
+(function init(){
+  // theme
+  if(localStorage.getItem('theme')==='dark') document.documentElement.classList.add('dark');
+  updateThemeIcon();
+  // auth
+  updateAuthUI();
+  const hash=location.hash.replace('#','');
+  if(hash) navigate(hash);
+  else navigate('overview');
+  // nav
+  document.querySelectorAll('.nav-item').forEach(a=>a.addEventListener('click', e=>{ e.preventDefault(); navigate(a.dataset.view);}));
+  window.addEventListener('hashchange', ()=>{ const h=location.hash.replace('#',''); if(h) navigate(h); });
+  // global search enter
+  // load projects after auth
+  if(token) { loadProjects(); loadOverview(); }
+})();
+
+// register service worker for offline? not needed
+
+// demo helper: create demo project if none
+async function ensureDemoProject(){
+  if(!token) return;
+  try{
+    const list=await api('/v1/projects');
+    if(!list.length){
+      const p=await api('/v1/projects',{method:'POST', body:JSON.stringify({name:'Demo NIDS Project', domain:'network-intrusion-detection', retention_days:90})});
+      selectProject(p.id); loadProjects();
+    }
+  }catch(e){}
+}
+</script>
+</body>
+</html>
