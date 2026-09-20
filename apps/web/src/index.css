@@ -1,0 +1,15 @@
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+
+@theme {
+  --color-background: #080D16;
+  --color-panel: #101A26;
+  --color-panel-light: #142331;
+  --color-border: #1E293B;
+  --color-accent: #CFFF4B;
+  --color-accent-dim: #8FBF2A;
+  --color-cyan: #22D3EE;
+  --color-coral: #FF6B6B;
+  --color-amber: #F59E0B;
+  --color-muted: #64748B;
+}
