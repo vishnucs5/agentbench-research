@@ -25,7 +25,7 @@ import StatusBadge from "@/components/dashboard/StatusBadge"
 import EmptyState from "@/components/dashboard/EmptyState"
 import { useToast } from "@/hooks/use-toast"
 import { RefreshCw, ClipboardList, Search } from "lucide-react"
-import type { RunListItem, RunTrace, RunStatus } from "@/types"
+import type { RunListItem, RunTrace } from "@/types"
 
 const STATUS_FILTERS: { label: string; value: string }[] = [
   { label: "All Statuses", value: "all" },
