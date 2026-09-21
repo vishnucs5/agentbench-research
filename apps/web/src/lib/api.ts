@@ -1,3 +1,5 @@
+import type { Project, RunTrace, PaginatedRuns, ProjectStats } from "@/types"
+
 const API_BASE = ""
 
 function getToken(): string | null {
@@ -51,10 +53,10 @@ export const authApi = {
 
 // Projects
 export const projectsApi = {
-  list: () => api<{ items: any[] }>("/v1/projects"),
-  get: (id: string) => api<any>(`/v1/projects/${id}`),
+  list: () => api<Project[]>("/v1/projects"),
+  get: (id: string) => api<Project>(`/v1/projects/${id}`),
   create: (data: { name: string; domain: string; retention_days?: number }) =>
-    api<any>("/v1/projects", { method: "POST", body: JSON.stringify(data) }),
+    api<Project>("/v1/projects", { method: "POST", body: JSON.stringify(data) }),
   delete: (id: string) =>
     api<void>(`/v1/projects/${id}`, { method: "DELETE" }),
 }
@@ -62,20 +64,20 @@ export const projectsApi = {
 // Dashboard
 export const dashboardApi = {
   stats: (projectId: string) =>
-    api<any>(`/v1/dashboard/projects/${projectId}/stats`),
+    api<ProjectStats>(`/v1/dashboard/projects/${projectId}/stats`),
 }
 
 // Papers
 export const papersApi = {
   list: (projectId: string) =>
-    api<{ items: any[] }>(`/v1/projects/${projectId}/papers`),
+    api<{ papers: any[]; total: number; page: number; page_size: number }>(`/v1/projects/${projectId}/papers`),
 }
 
 // Trace Replay
 export const traceApi = {
   listRuns: (projectId: string) =>
-    api<{ items: any[] }>(`/v1/dashboard/projects/${projectId}/runs`),
-  getRun: (runId: string) => api<any>(`/v1/dashboard/runs/${runId}/trace`),
+    api<PaginatedRuns>(`/v1/dashboard/projects/${projectId}/runs`),
+  getRun: (runId: string) => api<RunTrace>(`/v1/dashboard/runs/${runId}/trace`),
 }
 
 // Health

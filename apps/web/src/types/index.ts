@@ -7,12 +7,13 @@ export interface User {
 
 export interface Project {
   id: string
+  owner_id: string
   name: string
   domain: string
   retention_days: number
   created_at: string
-  updated_at: string
-  paper_count?: number
+  paper_count: number
+  run_count: number
 }
 
 export interface Paper {
@@ -40,13 +41,16 @@ export interface ProjectStats {
 }
 
 export interface RunListItem {
-  id: string
+  run_id: string
+  project_id: string
+  request_text: string
   status: RunStatus
-  latency_ms: number
-  tool_calls: number
+  model_profile: string
+  started_at: string
+  completed_at: string | null
+  total_latency_ms: number
+  total_tool_calls: number
   evidence_count: number
-  model: string
-  created_at: string
 }
 
 export type RunStatus =
@@ -55,28 +59,37 @@ export type RunStatus =
   | "failed" | "needs_review" | "cancelled"
 
 export interface TraceEvent {
-  id: string
+  event_id: string
   sequence_no: number
   event_type: string
   component: string
+  action: string | null
   status: string
-  latency_ms: number
-  input_summary: string
-  output_summary: string
+  latency_ms: number | null
+  input_summary: Record<string, unknown>
+  output_summary: Record<string, unknown>
   evidence_ids: string[]
-  metadata: Record<string, unknown>
+  model_profile: string | null
+  redaction_version: string
+  created_at: string
 }
 
 export interface RunTrace {
   run_id: string
   project_id: string
+  user_id: string
+  request_text: string
+  plan: Record<string, unknown>[]
   status: RunStatus
+  model_profile: string
+  started_at: string
+  completed_at: string | null
+  error_code: string | null
+  trace_events: TraceEvent[]
   total_latency_ms: number
-  tool_calls: number
+  total_tool_calls: number
+  budgets: Record<string, unknown>
   evidence_ids: string[]
-  model: string
-  events: TraceEvent[]
-  created_at: string
 }
 
 export interface LoginRequest {
@@ -101,4 +114,12 @@ export interface HealthResponse {
   version: string
   environment: string
   database: string
+}
+
+export interface PaginatedRuns {
+  runs: RunListItem[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
 }

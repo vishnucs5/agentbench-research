@@ -2,16 +2,8 @@ import { NavLink } from "react-router-dom"
 import {
   LayoutDashboard,
   FolderOpen,
-  FileText,
-  Search,
-  Zap,
-  Layers,
-  ShieldCheck,
-  FileBarChart,
-  BarChart3,
   GitBranch,
   Settings,
-  ExternalLink,
 } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 
@@ -24,19 +16,11 @@ interface NavItem {
 const workspaceNav: NavItem[] = [
   { label: "Overview", path: "/", icon: <LayoutDashboard size={18} /> },
   { label: "Projects", path: "/projects", icon: <FolderOpen size={18} /> },
-  { label: "Papers", path: "/papers", icon: <FileText size={18} /> },
-  { label: "Retrieval", path: "/retrieval", icon: <Search size={18} /> },
-  { label: "Extraction", path: "/extraction", icon: <Zap size={18} /> },
-  { label: "Synthesis", path: "/synthesis", icon: <Layers size={18} /> },
-  { label: "Verification", path: "/verification", icon: <ShieldCheck size={18} /> },
-  { label: "Reports", path: "/reports", icon: <FileBarChart size={18} /> },
-  { label: "Evaluation", path: "/evaluation", icon: <BarChart3 size={18} /> },
   { label: "Trace Replay", path: "/trace", icon: <GitBranch size={18} /> },
 ]
 
 const systemNav: NavItem[] = [
   { label: "Settings", path: "/settings", icon: <Settings size={18} /> },
-  { label: "API Docs", path: "/api-docs", icon: <ExternalLink size={18} /> },
 ]
 
 function SidebarLink({ item }: { item: NavItem }) {

@@ -1,24 +1,20 @@
+import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import MetricCard from "@/components/dashboard/MetricCard"
 import StatusBadge from "@/components/dashboard/StatusBadge"
 import EmptyState from "@/components/dashboard/EmptyState"
 import PipelineStepper from "@/components/dashboard/PipelineStepper"
-import { MOCK_STATS, MOCK_PIPELINE } from "@/lib/mock-data"
-import { FileText, Search, GitCompare, Activity, ClipboardList } from "lucide-react"
+import { useProject } from "@/contexts/ProjectContext"
+import { dashboardApi } from "@/lib/api"
+import { MOCK_PIPELINE } from "@/lib/mock-data"
+import { ClipboardList } from "lucide-react"
+import type { ProjectStats } from "@/types"
 
-const QUICK_ACTIONS = [
-  { label: "Upload PDF", icon: FileText },
-  { label: "Search", icon: Search },
-  { label: "Compare", icon: GitCompare },
-  { label: "Benchmark", icon: Activity },
-]
-
-const PROVIDERS = [
-  { name: "OpenRouter", model: "claude-3.5-sonnet", status: "completed" },
-  { name: "Ollama", model: "qwen3-coder:30b", status: "fallback" },
-  { name: "Mock", model: "deterministic", status: "created" },
+const EVIDENCE_METRICS = [
+  { label: "Citation precision", value: "≥ 90%" },
+  { label: "Unsupported", value: "< 10%" },
+  { label: "Page-aware", value: "text + tables" },
 ]
 
 const BUDGETS = [
@@ -27,14 +23,30 @@ const BUDGETS = [
   { label: "deadline", value: "180s" },
 ]
 
-const EVIDENCE_METRICS = [
-  { label: "Citation precision", value: "≥ 90%" },
-  { label: "Unsupported", value: "< 10%" },
-  { label: "Page-aware", value: "text + tables" },
+const PROVIDERS = [
+  { name: "OpenRouter", model: "claude-3.5-sonnet", status: "completed" },
+  { name: "Ollama", model: "qwen3-coder:30b", status: "fallback" },
+  { name: "Mock", model: "deterministic", status: "created" },
 ]
 
 export default function Overview() {
-  const stats = MOCK_STATS
+  const { selectedProject } = useProject()
+  const [stats, setStats] = useState<ProjectStats | null>(null)
+
+  useEffect(() => {
+    if (selectedProject) {
+      loadStats(selectedProject.id)
+    }
+  }, [selectedProject])
+
+  async function loadStats(projectId: string) {
+    try {
+      const data = await dashboardApi.stats(projectId)
+      setStats(data)
+    } catch {
+      // Stats unavailable - show empty state
+    }
+  }
 
   return (
     <div className="p-6 space-y-8">
@@ -65,15 +77,15 @@ export default function Overview() {
           </Badge>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          <MetricCard title="Projects" value="0" />
-          <MetricCard title="Papers" value={stats.total_papers ?? "0"} />
+          <MetricCard title="Projects" value={stats ? "1" : "0"} />
+          <MetricCard title="Papers" value={stats?.total_papers?.toString() ?? "0"} />
           <MetricCard
             title="Evidence"
-            value={stats.total_evidence ?? "—"}
+            value={stats?.total_evidence?.toString() ?? "—"}
             description="Chunks · 512 tok · Hybrid"
           />
           <MetricCard title="Claims" value="—" description="8 types · Structured · Cited" />
-          <MetricCard title="Runs" value={stats.total_runs ?? "—"} description="Traces · Budgets · Replay" />
+          <MetricCard title="Runs" value={stats?.total_runs?.toString() ?? "—"} description="Traces · Budgets · Replay" />
         </div>
       </div>
 
@@ -155,35 +167,27 @@ export default function Overview() {
         </Card>
       </div>
 
-      {/* Quick Actions */}
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#64748B] mb-3">
-          Quick Actions
-        </p>
-        <div className="flex flex-wrap gap-3">
-          {QUICK_ACTIONS.map((action) => (
-            <Button
-              key={action.label}
-              variant="outline"
-              className="border-[#1E293B] bg-[#101A26] text-white hover:border-[#CFFF4B] hover:text-[#CFFF4B] hover:bg-[#101A26]"
-            >
-              <action.icon className="h-4 w-4" />
-              {action.label}
-            </Button>
-          ))}
-        </div>
-      </div>
-
       {/* Recent Runs */}
       <Card className="bg-[#101A26] border-[#1E293B] p-6">
         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#64748B] mb-2">
           Recent Runs · Trace Completeness 100%
         </p>
-        <EmptyState
-          icon={ClipboardList}
-          title="No runs yet"
-          description="Upload a paper to start. Traces are redacted and retained per retention policy."
-        />
+        {stats?.recent_runs && stats.recent_runs.length > 0 ? (
+          <div className="space-y-2">
+            {stats.recent_runs.slice(0, 5).map((run) => (
+              <div key={run.run_id} className="flex items-center justify-between text-sm py-2 border-b border-[#1E293B] last:border-0">
+                <span className="text-white font-mono text-xs">{run.request_text.slice(0, 60)}...</span>
+                <StatusBadge status={run.status} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={ClipboardList}
+            title="No runs yet"
+            description="Upload a paper to start. Traces are redacted and retained per retention policy."
+          />
+        )}
       </Card>
     </div>
   )

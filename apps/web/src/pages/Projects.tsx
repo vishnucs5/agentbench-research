@@ -24,15 +24,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { FolderOpen, FolderSearch } from "lucide-react"
-
-interface Project {
-  id: string
-  name: string
-  domain: string
-  retention_days: number
-  paper_count?: number
-  created_at?: string
-}
+import type { Project } from "@/types"
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -53,8 +45,8 @@ export default function Projects() {
   async function loadProjects() {
     try {
       setLoading(true)
-      const res = await projectsApi.list()
-      setProjects(res.items ?? [])
+      const data = await projectsApi.list()
+      setProjects(data)
     } catch (err) {
       toast({
         title: "Failed to load projects",
@@ -162,7 +154,8 @@ export default function Projects() {
                 <TableHead className="text-[#64748B] font-semibold">Domain</TableHead>
                 <TableHead className="text-[#64748B] font-semibold">Retention</TableHead>
                 <TableHead className="text-[#64748B] font-semibold">Papers</TableHead>
-                <TableHead className="text-[#64748B] font-semibold">Last Activity</TableHead>
+                <TableHead className="text-[#64748B] font-semibold">Runs</TableHead>
+                <TableHead className="text-[#64748B] font-semibold">Created</TableHead>
                 <TableHead className="text-[#64748B] font-semibold text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -187,7 +180,10 @@ export default function Projects() {
                     {project.retention_days}d
                   </TableCell>
                   <TableCell className="text-[#94A3B8]">
-                    {project.paper_count ?? 0}
+                    {project.paper_count}
+                  </TableCell>
+                  <TableCell className="text-[#94A3B8]">
+                    {project.run_count}
                   </TableCell>
                   <TableCell className="text-[#94A3B8]">
                     {formatDate(project.created_at)}

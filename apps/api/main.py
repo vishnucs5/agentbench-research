@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from packages.domain.config import get_settings
 from packages.domain.database import close_db, init_db
 from packages.security.auth import get_auth_service
@@ -77,6 +78,8 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(dashboard_ui_router)
 
+    app.mount("/assets", StaticFiles(directory="apps/api/static/assets"), name="static-assets")
+
     @app.get("/healthz", response_model=HealthResponse)
     async def health_check() -> HealthResponse:
         return HealthResponse(
@@ -89,10 +92,6 @@ def create_app() -> FastAPI:
                 "config": "ok",
             },
         )
-
-    @app.get("/")
-    async def root() -> dict[str, str]:
-        return {"message": "AgentBench-Research API", "version": "0.1.0", "docs": "/docs"}
 
     return app
 

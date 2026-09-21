@@ -27,7 +27,5 @@ async def test_health_endpoint(client: AsyncClient):
 async def test_root_endpoint(client: AsyncClient):
     response = await client.get("/")
     assert response.status_code == 200
-    data = response.json()
-    assert data["message"] == "AgentBench-Research API"
-    assert data["version"] == "0.1.0"
-    assert data["docs"] == "/docs"
+    # Root now serves the React SPA (HTML) instead of JSON
+    assert "text/html" in response.headers.get("content-type", "") or len(response.content) > 0

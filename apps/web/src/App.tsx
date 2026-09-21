@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { AuthProvider, useAuth } from "@/hooks/use-auth"
+import { ProjectProvider } from "@/contexts/ProjectContext"
 import AppShell from "@/components/layout/AppShell"
 import { LoginOverlay } from "@/components/auth/LoginOverlay"
 import { RegisterOverlay } from "@/components/auth/RegisterOverlay"
@@ -15,15 +16,17 @@ function AuthGate() {
 
   if (isAuthenticated) {
     return (
-      <Routes>
-        <Route element={<AppShell />}>
-          <Route path="/" element={<Overview />} />
-          <Route path="/projects" element={<Projects />} />
-          <Route path="/trace" element={<TraceReplay />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
+      <ProjectProvider>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route path="/" element={<Overview />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/trace" element={<TraceReplay />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </ProjectProvider>
     )
   }
 

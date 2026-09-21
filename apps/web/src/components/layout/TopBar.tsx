@@ -1,28 +1,49 @@
 import { useAuth } from "@/hooks/use-auth"
+import { useProject } from "@/contexts/ProjectContext"
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { FolderOpen } from "lucide-react"
 
 export default function TopBar() {
   const { logout } = useAuth()
+  const { projects, selectedProject, setSelectedProject } = useProject()
 
   return (
     <header className="flex h-14 items-center gap-4 border-b border-border bg-panel px-6">
       <div className="flex items-center gap-3">
         <span className="text-sm font-medium text-foreground">Project</span>
-        <span className="rounded-md bg-secondary px-2 py-1 text-xs text-muted-foreground">
-          Default
-        </span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-2 rounded-md bg-secondary px-2 py-1 text-xs text-muted-foreground hover:bg-secondary/80">
+              <FolderOpen className="h-3 w-3" />
+              {selectedProject?.name ?? "Select project"}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="border-border bg-panel w-56">
+            {projects.length === 0 ? (
+              <DropdownMenuItem className="text-xs text-muted-foreground" disabled>
+                No projects available
+              </DropdownMenuItem>
+            ) : (
+              projects.map((project) => (
+                <DropdownMenuItem
+                  key={project.id}
+                  onClick={() => setSelectedProject(project)}
+                  className={`text-xs ${selectedProject?.id === project.id ? "text-accent" : "text-muted-foreground"}`}
+                >
+                  <FolderOpen className="h-3 w-3 mr-2" />
+                  {project.name}
+                </DropdownMenuItem>
+              ))
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-
-      <Button variant="outline" size="sm" className="ml-2 border-border text-xs">
-        + New Project
-      </Button>
 
       <div className="ml-auto flex items-center gap-4">
         <div className="relative hidden w-72 md:block">
@@ -37,7 +58,7 @@ export default function TopBar() {
 
         <div className="hidden items-center gap-2 text-[10px] text-muted-foreground lg:flex">
           <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-          Live API · SQLite · Qdrant Mock · MinIO Mock
+          Live API
         </div>
 
         <DropdownMenu>

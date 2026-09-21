@@ -104,7 +104,7 @@ export default function Settings() {
           Settings &middot; Security &amp; Reproducibility
         </h1>
         <p className="text-[#64748B]">
-          Read-only view of system configuration. All values are display-only for MVP.
+          Read-only view of local defaults. Values shown are display-only for MVP.
         </p>
       </div>
 

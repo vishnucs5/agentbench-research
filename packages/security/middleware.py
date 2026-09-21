@@ -28,13 +28,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/dashboard",
             "/app",
             "/ui",
+            "/projects",
+            "/trace",
+            "/settings",
             "/v1/auth/login",
             "/v1/auth/register",
             "/v1/auth/refresh",
         }
 
     async def dispatch(self, request: Request, call_next):
-        if request.url.path in self.exempt_paths or request.url.path.startswith(("/static", "/dashboard", "/app", "/ui")):
+        if request.url.path in self.exempt_paths or request.url.path.startswith(("/static", "/dashboard", "/app", "/ui", "/assets", "/projects", "/trace", "/settings")):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization")

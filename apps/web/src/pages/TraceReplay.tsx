@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react"
 import { traceApi } from "@/lib/api"
 import { formatDuration } from "@/lib/utils"
+import { useProject } from "@/contexts/ProjectContext"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -42,6 +43,7 @@ function truncateId(id: string): string {
 }
 
 export default function TraceReplay() {
+  const { selectedProject } = useProject()
   const [runs, setRuns] = useState<RunListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
@@ -52,8 +54,10 @@ export default function TraceReplay() {
   const { toast } = useToast()
 
   useEffect(() => {
-    loadRuns()
-  }, [])
+    if (selectedProject) {
+      loadRuns()
+    }
+  }, [selectedProject])
 
   useEffect(() => {
     if (selectedRunId) {
@@ -64,10 +68,11 @@ export default function TraceReplay() {
   }, [selectedRunId])
 
   async function loadRuns() {
+    if (!selectedProject) return
     try {
       setLoading(true)
-      const res = await traceApi.listRuns("default")
-      setRuns(res.items ?? [])
+      const res = await traceApi.listRuns(selectedProject.id)
+      setRuns(res.runs ?? [])
     } catch (err) {
       toast({
         title: "Failed to load runs",
@@ -106,8 +111,8 @@ export default function TraceReplay() {
       const q = searchQuery.toLowerCase()
       result = result.filter(
         (r) =>
-          r.id.toLowerCase().includes(q) ||
-          r.model.toLowerCase().includes(q)
+          r.request_text.toLowerCase().includes(q) ||
+          r.model_profile.toLowerCase().includes(q)
       )
     }
 
@@ -138,7 +143,7 @@ export default function TraceReplay() {
           size="sm"
           className="border-[#1E293B] bg-[#101A26] text-white hover:border-[#CFFF4B] hover:text-[#CFFF4B]"
           onClick={loadRuns}
-          disabled={loading}
+          disabled={loading || !selectedProject}
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Reload
@@ -219,26 +224,26 @@ export default function TraceReplay() {
               )}
               {filteredRuns.map((run) => (
                 <TableRow
-                  key={run.id}
+                  key={run.run_id}
                   className={`border-[#1E293B] cursor-pointer transition-colors ${
-                    selectedRunId === run.id
+                    selectedRunId === run.run_id
                       ? "bg-[#CFFF4B]/5"
                       : "hover:bg-[#1E293B]/50"
                   }`}
-                  onClick={() => handleRowClick(run.id)}
+                  onClick={() => handleRowClick(run.run_id)}
                 >
                   <TableCell className="font-mono text-white text-xs">
-                    {truncateId(run.id)}
+                    {truncateId(run.run_id)}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={run.status} />
                   </TableCell>
                   <TableCell className="font-mono text-[#94A3B8] text-xs">
-                    {formatDuration(run.latency_ms)}
+                    {formatDuration(run.total_latency_ms)}
                   </TableCell>
-                  <TableCell className="text-[#94A3B8]">{run.tool_calls}</TableCell>
+                  <TableCell className="text-[#94A3B8]">{run.total_tool_calls}</TableCell>
                   <TableCell className="text-[#94A3B8]">{run.evidence_count}</TableCell>
-                  <TableCell className="text-[#94A3B8]">{run.model}</TableCell>
+                  <TableCell className="text-[#94A3B8]">{run.model_profile}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -260,13 +265,13 @@ export default function TraceReplay() {
                     Latency: <span className="font-mono text-white">{formatDuration(trace.total_latency_ms)}</span>
                   </span>
                   <span className="text-[#94A3B8]">
-                    Tool calls: <span className="font-mono text-white">{trace.tool_calls}</span>
+                    Tool calls: <span className="font-mono text-white">{trace.total_tool_calls}</span>
                   </span>
                   <span className="text-[#94A3B8]">
                     Evidence: <span className="font-mono text-white">{trace.evidence_ids.length}</span>
                   </span>
                   <span className="text-[#94A3B8]">
-                    Model: <span className="font-mono text-white">{trace.model}</span>
+                    Model: <span className="font-mono text-white">{trace.model_profile}</span>
                   </span>
                 </div>
               )}
@@ -312,9 +317,9 @@ export default function TraceReplay() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {trace.events.map((event, idx) => (
+                  {trace.trace_events.map((event, idx) => (
                     <TableRow
-                      key={event.id}
+                      key={event.event_id}
                       className={`border-[#1E293B] ${
                         idx % 2 === 0 ? "bg-[#0D1420]/50" : "bg-[#101A26]"
                       }`}
@@ -332,7 +337,7 @@ export default function TraceReplay() {
                         <StatusBadge status={event.status} />
                       </TableCell>
                       <TableCell className="font-mono text-xs text-[#94A3B8]">
-                        {formatDuration(event.latency_ms)}
+                        {formatDuration(event.latency_ms ?? 0)}
                       </TableCell>
                       <TableCell className="font-mono text-xs text-[#94A3B8]">
                         {event.evidence_ids.length > 0
@@ -340,9 +345,9 @@ export default function TraceReplay() {
                           : "—"}
                       </TableCell>
                       <TableCell className="text-[#64748B] text-xs max-w-[200px] truncate">
-                        {event.input_summary && event.output_summary
-                          ? `${event.input_summary} → ${event.output_summary}`
-                          : event.input_summary || event.output_summary || "—"}
+                        {Object.keys(event.input_summary).length > 0 || Object.keys(event.output_summary).length > 0
+                          ? `${JSON.stringify(event.input_summary)} → ${JSON.stringify(event.output_summary)}`
+                          : "—"}
                       </TableCell>
                     </TableRow>
                   ))}
