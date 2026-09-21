@@ -113,6 +113,25 @@ class TraceReplayService:
         )
         return result.scalar_one_or_none()
 
+    async def update_run_status(self, run_id: UUID, status: str) -> None:
+        from apps.api.main import app
+        ws_manager = app.state.ws_manager
+
+        run = await self._get_run_with_events(run_id)
+        if run:
+            run.status = status
+            await self._session.flush()
+
+            await ws_manager.broadcast_run_update(
+                str(run.project_id),
+                {
+                    "run_id": str(run_id),
+                    "status": status,
+                    "updated_at": run.updated_at.isoformat() if run.updated_at else None,
+                },
+            )
+            await ws_manager.broadcast_stats_update(str(run.project_id))
+
     async def list_runs(
         self,
         project_id: UUID | None = None,

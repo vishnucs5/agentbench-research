@@ -88,6 +88,8 @@ def create_app() -> FastAPI:
     from apps.api.retrieval import router as retrieval_router
     from apps.api.synthesis import router as synthesis_router
     from apps.api.verification import router as verification_router
+    from packages.websocket import manager as ws_manager
+    from packages.websocket import websocket_router
     app.include_router(auth_router)
     app.include_router(projects_router)
     app.include_router(papers_router)
@@ -98,6 +100,10 @@ def create_app() -> FastAPI:
     app.include_router(evaluation_router)
     app.include_router(dashboard_router)
     app.include_router(dashboard_ui_router)
+    app.include_router(websocket_router)
+
+    # Expose ws_manager for use in other modules
+    app.state.ws_manager = ws_manager
 
     app.mount("/assets", StaticFiles(directory="apps/api/static/assets"), name="static-assets")
 
