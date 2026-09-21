@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import MetricCard from "@/components/dashboard/MetricCard"
@@ -6,10 +5,9 @@ import StatusBadge from "@/components/dashboard/StatusBadge"
 import EmptyState from "@/components/dashboard/EmptyState"
 import PipelineStepper from "@/components/dashboard/PipelineStepper"
 import { useProject } from "@/contexts/ProjectContext"
-import { dashboardApi } from "@/lib/api"
+import { useStats } from "@/hooks/use-stats"
 import { MOCK_PIPELINE } from "@/lib/mock-data"
 import { ClipboardList } from "lucide-react"
-import type { ProjectStats } from "@/types"
 
 const EVIDENCE_METRICS = [
   { label: "Citation precision", value: "≥ 90%" },
@@ -31,22 +29,7 @@ const PROVIDERS = [
 
 export default function Overview() {
   const { selectedProject } = useProject()
-  const [stats, setStats] = useState<ProjectStats | null>(null)
-
-  useEffect(() => {
-    if (selectedProject) {
-      loadStats(selectedProject.id)
-    }
-  }, [selectedProject])
-
-  async function loadStats(projectId: string) {
-    try {
-      const data = await dashboardApi.stats(projectId)
-      setStats(data)
-    } catch {
-      // Stats unavailable - show empty state
-    }
-  }
+  const { data: stats, isLoading } = useStats(selectedProject?.id ?? null)
 
   return (
     <div className="p-6 space-y-8">
@@ -77,15 +60,15 @@ export default function Overview() {
           </Badge>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          <MetricCard title="Projects" value={stats ? "1" : "0"} />
-          <MetricCard title="Papers" value={stats?.total_papers?.toString() ?? "0"} />
+          <MetricCard title="Projects" value={isLoading ? "..." : stats ? "1" : "0"} />
+          <MetricCard title="Papers" value={isLoading ? "..." : stats?.total_papers?.toString() ?? "0"} />
           <MetricCard
             title="Evidence"
-            value={stats?.total_evidence?.toString() ?? "—"}
+            value={isLoading ? "..." : stats?.total_evidence?.toString() ?? "—"}
             description="Chunks · 512 tok · Hybrid"
           />
           <MetricCard title="Claims" value="—" description="8 types · Structured · Cited" />
-          <MetricCard title="Runs" value={stats?.total_runs?.toString() ?? "—"} description="Traces · Budgets · Replay" />
+          <MetricCard title="Runs" value={isLoading ? "..." : stats?.total_runs?.toString() ?? "—"} description="Traces · Budgets · Replay" />
         </div>
       </div>
 
