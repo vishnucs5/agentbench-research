@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react"
-import { projectsApi } from "@/lib/api"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -23,14 +22,17 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { useProjects, useCreateProject } from "@/hooks/use-projects"
+import Pagination from "@/components/dashboard/Pagination"
 import { FolderOpen, FolderSearch } from "lucide-react"
-import type { Project } from "@/types"
+
+const ITEMS_PER_PAGE = 10
 
 export default function Projects() {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: projects, isLoading } = useProjects()
+  const createProject = useCreateProject()
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [creating, setCreating] = useState(false)
+  const [page, setPage] = useState(1)
   const [form, setForm] = useState({
     name: "",
     domain: "network-intrusion-detection",
@@ -38,50 +40,22 @@ export default function Projects() {
   })
   const { toast } = useToast()
 
-  useEffect(() => {
-    loadProjects()
-  }, [])
-
-  async function loadProjects() {
-    try {
-      setLoading(true)
-      const data = await projectsApi.list()
-      setProjects(data)
-    } catch (err) {
-      toast({
-        title: "Failed to load projects",
-        description: err instanceof Error ? err.message : "Unknown error",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
   async function handleCreate() {
     if (!form.name.trim()) {
       toast({ title: "Project name is required", variant: "destructive" })
       return
     }
     try {
-      setCreating(true)
-      const created = await projectsApi.create({
-        name: form.name.trim(),
-        domain: form.domain,
-        retention_days: form.retention_days,
-      })
-      setProjects((prev) => [...prev, created])
+      await createProject.mutateAsync(form)
       setDialogOpen(false)
       setForm({ name: "", domain: "network-intrusion-detection", retention_days: 90 })
-      toast({ title: "Project created", description: `"${created.name}" is ready.` })
+      toast({ title: "Project created", description: `"${form.name.trim()}" is ready.` })
     } catch (err) {
       toast({
         title: "Failed to create project",
         description: err instanceof Error ? err.message : "Unknown error",
         variant: "destructive",
       })
-    } finally {
-      setCreating(false)
     }
   }
 
@@ -93,6 +67,13 @@ export default function Projects() {
       day: "numeric",
     })
   }
+
+  const projectList = projects ?? []
+  const totalPages = Math.ceil(projectList.length / ITEMS_PER_PAGE)
+  const paginatedProjects = projectList.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE,
+  )
 
   return (
     <div className="p-6 space-y-6">
@@ -116,7 +97,7 @@ export default function Projects() {
       </div>
 
       {/* Loading State */}
-      {loading && (
+      {isLoading && (
         <Card className="bg-[#101A26] border-[#1E293B] p-6">
           <div className="space-y-4">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -134,7 +115,7 @@ export default function Projects() {
       )}
 
       {/* Empty State */}
-      {!loading && projects.length === 0 && (
+      {!isLoading && projectList.length === 0 && (
         <Card className="bg-[#101A26] border-[#1E293B] p-12 flex flex-col items-center justify-center text-center">
           <FolderSearch className="h-12 w-12 text-[#64748B] mb-4" />
           <p className="text-white font-medium mb-1">No projects yet</p>
@@ -145,7 +126,7 @@ export default function Projects() {
       )}
 
       {/* Projects Table */}
-      {!loading && projects.length > 0 && (
+      {!isLoading && projectList.length > 0 && (
         <Card className="bg-[#101A26] border-[#1E293B]">
           <Table>
             <TableHeader>
@@ -160,7 +141,7 @@ export default function Projects() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {projects.map((project) => (
+              {paginatedProjects.map((project) => (
                 <TableRow key={project.id} className="border-[#1E293B]">
                   <TableCell className="font-medium text-white">
                     <div className="flex items-center gap-2">
@@ -201,6 +182,15 @@ export default function Projects() {
               ))}
             </TableBody>
           </Table>
+          {totalPages > 1 && (
+            <div className="border-t border-[#1E293B]">
+              <Pagination
+                currentPage={page}
+                totalPages={totalPages}
+                onPageChange={setPage}
+              />
+            </div>
+          )}
         </Card>
       )}
 
@@ -266,10 +256,10 @@ export default function Projects() {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={creating}
+              disabled={createProject.isPending}
               className="bg-[#CFFF4B] text-black hover:bg-[#CFFF4B]/90 font-semibold"
             >
-              {creating ? "Creating…" : "Create"}
+              {createProject.isPending ? "Creating…" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>
