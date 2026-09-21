@@ -88,8 +88,8 @@ def create_app() -> FastAPI:
     from apps.api.retrieval import router as retrieval_router
     from apps.api.synthesis import router as synthesis_router
     from apps.api.verification import router as verification_router
-    from packages.websocket import manager as ws_manager
     from packages.websocket import websocket_router
+    from packages.websocket import ws_manager
     app.include_router(auth_router)
     app.include_router(projects_router)
     app.include_router(papers_router)

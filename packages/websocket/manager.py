@@ -54,3 +54,6 @@ class ConnectionManager:
 
     def get_connection_count(self, project_id: str) -> int:
         return len(self._connections.get(project_id, []))
+
+
+ws_manager = ConnectionManager()

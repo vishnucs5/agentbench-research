@@ -2,12 +2,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from packages.websocket.manager import ConnectionManager
+from packages.websocket.manager import ws_manager as manager
 
 router = APIRouter(tags=["websocket"])
-
-# Global connection manager instance
-manager = ConnectionManager()
 
 
 @router.websocket("/ws/projects/{project_id}")

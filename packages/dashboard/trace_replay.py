@@ -121,6 +121,7 @@ class TraceReplayService:
         if run:
             run.status = status
             await self._session.flush()
+            await self._session.commit()
 
             await ws_manager.broadcast_run_update(
                 str(run.project_id),
