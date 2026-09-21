@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import time
-
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from packages.domain.database import get_db_session, get_session
+from packages.domain.database import get_session
 from packages.domain.models import User
 from packages.security.auth import AuthService, get_auth_service
 from packages.security.schemas import Permission, UserRole, get_role_permissions
@@ -74,8 +72,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
         self.requests_per_hour = requests_per_hour
-        self.minute_buckets: dict[str, list[float]] = {}
-        self.hour_buckets: dict[str, list[float]] = {}
+        self._cache = None
+
+    async def _get_cache(self):
+        if self._cache is None:
+            from packages.cache.redis import RedisCache
+            self._cache = RedisCache()
+            await self._cache.connect()
+        return self._cache
 
     def _get_client_id(self, request: Request) -> str:
         forwarded = request.headers.get("X-Forwarded-For")
@@ -83,43 +87,42 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return forwarded.split(",")[0].strip()
         return request.client.host if request.client else "unknown"
 
-    def _clean_buckets(self, buckets: dict[str, list[float]], window: float) -> None:
-        now = time.time()
-        for key in list(buckets.keys()):
-            buckets[key] = [t for t in buckets[key] if now - t < window]
-            if not buckets[key]:
-                del buckets[key]
-
     async def dispatch(self, request: Request, call_next):
         client_id = self._get_client_id(request)
-        now = time.time()
 
-        self._clean_buckets(self.minute_buckets, 60)
-        self._clean_buckets(self.hour_buckets, 3600)
+        minute_count = 0
+        try:
+            cache = await self._get_cache()
 
-        if client_id not in self.minute_buckets:
-            self.minute_buckets[client_id] = []
-        if client_id not in self.hour_buckets:
-            self.hour_buckets[client_id] = []
+            minute_key = f"ratelimit:{client_id}:minute"
+            minute_count = await cache.get(minute_key) or 0
+            if minute_count >= self.requests_per_minute:
+                return Response(
+                    content='{"detail": "Rate limit exceeded: too many requests per minute"}',
+                    status_code=429,
+                    media_type="application/json",
+                )
 
-        if len(self.minute_buckets[client_id]) >= 60:
-            return Response(
-                content='{"detail": "Rate limit exceeded: too many requests per minute"}',
-                status_code=429,
-                media_type="application/json",
-            )
+            hour_key = f"ratelimit:{client_id}:hour"
+            hour_count = await cache.get(hour_key) or 0
+            if hour_count >= self.requests_per_hour:
+                return Response(
+                    content='{"detail": "Rate limit exceeded: too many requests per hour"}',
+                    status_code=429,
+                    media_type="application/json",
+                )
 
-        if len(self.hour_buckets[client_id]) >= 1000:
-            return Response(
-                content='{"detail": "Rate limit exceeded: too many requests per hour"}',
-                status_code=429,
-                media_type="application/json",
-            )
+            await cache.set(minute_key, minute_count + 1, ttl=60)
+            await cache.set(hour_key, hour_count + 1, ttl=3600)
+        except Exception:
+            pass
 
-        self.minute_buckets[client_id].append(now)
-        self.hour_buckets[client_id].append(now)
-
-        return await call_next(request)
+        response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(self.requests_per_minute)
+        response.headers["X-RateLimit-Remaining"] = str(
+            max(0, self.requests_per_minute - minute_count - 1)
+        )
+        return response
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
