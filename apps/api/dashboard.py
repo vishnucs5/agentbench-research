@@ -31,12 +31,18 @@ async def get_project_stats(
     cache: RedisCache | MemoryCache = Depends(get_cache),
 ):
     cache_key = f"stats:{project_id}"
-    cached = await cache.get(cache_key)
+    try:
+        cached = await cache.get(cache_key)
+    except Exception:
+        cached = None
     if cached:
         return ProjectDashboardStats(**cached)
 
     result = await service.get_project_stats(project_id)
-    await cache.set(cache_key, result.model_dump(), ttl=30)
+    try:
+        await cache.set(cache_key, result.model_dump(), ttl=30)
+    except Exception:
+        pass
     return result
 
 
@@ -55,8 +61,11 @@ async def list_project_runs(
 ):
     from datetime import datetime
 
-    cache_key = f"runs:{project_id}:p{page}:s{','.join(status or [])}:m{','.join(model_profile or [])}:{search}"
-    cached = await cache.get(cache_key)
+    cache_key = f"runs:{project_id}:p{page}:s{','.join(status or [])}:m{','.join(model_profile or [])}:{search}:{date_from}:{date_to}"
+    try:
+        cached = await cache.get(cache_key)
+    except Exception:
+        cached = None
     if cached:
         return PaginatedRuns(**cached)
 
@@ -71,7 +80,10 @@ async def list_project_runs(
         page_size=page_size,
     )
     result = await service.list_runs(project_id=project_id, filters=filters)
-    await cache.set(cache_key, result.model_dump(), ttl=15)
+    try:
+        await cache.set(cache_key, result.model_dump(), ttl=15)
+    except Exception:
+        pass
     return result
 
 
@@ -90,8 +102,11 @@ async def get_run_trace(
 ):
     from packages.dashboard.schemas import EventType
 
-    cache_key = f"trace:{run_id}"
-    cached = await cache.get(cache_key)
+    cache_key = f"trace:{run_id}:et{','.join(event_types or [])}:c{','.join(components or [])}:st{','.join(statuses or [])}:ss{start_sequence}:es{end_sequence}:ev{include_evidence}:r{include_redacted}"
+    try:
+        cached = await cache.get(cache_key)
+    except Exception:
+        cached = None
     if cached:
         return RunTraceResponse(**cached)
 
@@ -111,7 +126,10 @@ async def get_run_trace(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found",
         )
-    await cache.set(cache_key, trace.model_dump(), ttl=60)
+    try:
+        await cache.set(cache_key, trace.model_dump(), ttl=60)
+    except Exception:
+        pass
     return trace
 
 
