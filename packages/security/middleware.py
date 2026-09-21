@@ -17,6 +17,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, auth_service: AuthService | None = None):
         super().__init__(app)
         self.auth_service = auth_service or get_auth_service()
+        self._cache = None
         self.exempt_paths = {
             "/",
             "/healthz",
@@ -34,6 +35,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/v1/auth/refresh",
         }
 
+    async def _get_cache(self):
+        if self._cache is None:
+            from packages.cache.redis import RedisCache
+            self._cache = RedisCache()
+            await self._cache.connect()
+        return self._cache
+
     async def dispatch(self, request: Request, call_next):
         if request.url.path in self.exempt_paths or request.url.path.startswith(("/static", "/dashboard", "/app", "/ui", "/assets", "/projects", "/trace", "/settings")):
             return await call_next(request)
@@ -47,14 +55,46 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not payload:
             return self._unauthorized("Invalid or expired token")
 
-        async with get_session() as session:
-            result = await session.execute(select(User).where(User.id == payload.user_id))
-            user = result.scalar_one_or_none()
-            if not user or not user.is_active:
-                return self._unauthorized("User not found or inactive")
+        # Try to get user from cache first
+        user = None
+        try:
+            cache = await self._get_cache()
+            cached_user = await cache.get(f"user:{payload.user_id}")
+            if cached_user:
+                from packages.domain.models import User as UserModel
+                user = UserModel(**cached_user)
+        except Exception:
+            pass
 
-            request.state.user = user
-            request.state.token_payload = payload
+        # Fallback to DB lookup
+        if not user:
+            async with get_session() as session:
+                result = await session.execute(select(User).where(User.id == payload.user_id))
+                user = result.scalar_one_or_none()
+
+                # Cache for 5 minutes
+                if user:
+                    try:
+                        cache = await self._get_cache()
+                        await cache.set(
+                            f"user:{user.id}",
+                            {
+                                "id": str(user.id),
+                                "email": user.email,
+                                "full_name": user.full_name,
+                                "role": user.role.value if hasattr(user.role, "value") else user.role,
+                                "is_active": user.is_active,
+                            },
+                            ttl=300,
+                        )
+                    except Exception:
+                        pass
+
+        if not user or not user.is_active:
+            return self._unauthorized("User not found or inactive")
+
+        request.state.user = user
+        request.state.token_payload = payload
 
         return await call_next(request)
 
