@@ -27,6 +27,9 @@ dependencies = [
     # Object Storage
     "minio>=7.2.0",
 
+    # Cache
+    "redis>=5.0.0",
+
     # PDF Parsing
     "pymupdf>=1.23.0",
 

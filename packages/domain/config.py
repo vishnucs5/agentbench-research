@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     # Vector Store
     qdrant_url: str = "http://localhost:6333"
 
+    # Cache settings
+    redis_url: str = "redis://localhost:6379/0"
+    cache_default_ttl: int = 30  # seconds
+    cache_enabled: bool = True
+
     # Object Storage
     minio_endpoint: str = "localhost:9000"
     minio_root_user: str = "minioadmin"

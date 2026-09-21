@@ -6,6 +6,8 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from packages.cache.memory import MemoryCache
+from packages.cache.redis import RedisCache
 from packages.domain.config import get_settings
 from packages.domain.database import close_db, init_db
 from packages.security.auth import get_auth_service
@@ -22,13 +24,32 @@ class HealthResponse(BaseModel):
     version: str
     environment: str
     database: str
+    cache: str
     checks: dict[str, Any]
+
+
+cache_client = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global cache_client
+    settings = get_settings()
+
+    # Initialize cache
+    if settings.cache_enabled:
+        try:
+            cache_client = RedisCache()
+            await cache_client.connect()
+        except Exception:
+            cache_client = MemoryCache()
+    else:
+        cache_client = MemoryCache()
+
     await init_db()
     yield
+    if hasattr(cache_client, "disconnect"):
+        await cache_client.disconnect()
     await close_db()
 
 
@@ -82,13 +103,16 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz", response_model=HealthResponse)
     async def health_check() -> HealthResponse:
+        cache_status = "connected" if isinstance(cache_client, RedisCache) else "in-memory"
         return HealthResponse(
             status="healthy",
             version="0.1.0",
             environment=settings.app_env,
             database="connected",
+            cache=cache_status,
             checks={
                 "database": "ok",
+                "cache": cache_status,
                 "config": "ok",
             },
         )
