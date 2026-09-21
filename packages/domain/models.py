@@ -11,6 +11,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -254,6 +255,12 @@ class ResearchRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Denormalized metrics (computed on run completion)
+    total_latency_ms: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    tool_call_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    evidence_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    trace_event_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     project: Mapped[Project] = relationship(back_populates="runs", lazy="selectin")
     user: Mapped[User] = relationship(back_populates="runs", lazy="selectin")
