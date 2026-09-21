@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { useRuns, useRunTrace } from "@/hooks/runs"
+import { useState, useEffect, useRef } from "react"
+import { useRuns, useRunTrace } from "@/hooks/use-runs"
 import { formatDuration } from "@/lib/utils"
 import { useProject } from "@/contexts/ProjectContext"
 import { Button } from "@/components/ui/button"
@@ -36,18 +36,30 @@ function truncateId(id: string): string {
 export default function TraceReplay() {
   const { selectedProject } = useProject()
   const [page, setPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState("")
+  const [searchInput, setSearchInput] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
 
-  const { data: runsData, isLoading } = useRuns({
+  const debounceTimer = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(() => {
+    clearTimeout(debounceTimer.current)
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedSearch(searchInput)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(debounceTimer.current)
+  }, [searchInput])
+
+  const { data: runsData, isLoading, error: runsError, refetch } = useRuns({
     projectId: selectedProject?.id ?? null,
     page,
     status: statusFilter.length > 0 ? statusFilter : undefined,
-    search: searchQuery || undefined,
+    search: debouncedSearch || undefined,
   })
 
-  const { data: trace, isLoading: traceLoading } = useRunTrace(selectedRunId)
+  const { data: trace, isLoading: traceLoading, error: traceError } = useRunTrace(selectedRunId)
 
   const runs = runsData?.runs ?? []
 
@@ -82,7 +94,7 @@ export default function TraceReplay() {
           size="sm"
           className="border-[#1E293B] bg-[#101A26] text-white hover:border-[#CFFF4B] hover:text-[#CFFF4B]"
           disabled={isLoading || !selectedProject}
-          onClick={() => setPage((p) => p)}
+          onClick={() => refetch()}
         >
           <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           Reload
@@ -91,11 +103,8 @@ export default function TraceReplay() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#64748B]" />
           <Input
             placeholder="Search request text..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value)
-              setPage(1)
-            }}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="bg-[#0D1420] border-[#1E293B] text-white placeholder:text-[#64748B] pl-9"
           />
         </div>
@@ -131,6 +140,15 @@ export default function TraceReplay() {
               </div>
             ))}
           </div>
+        </Card>
+      )}
+
+      {/* Error State */}
+      {!isLoading && runsError && (
+        <Card className="bg-[#101A26] border-red-500/30 p-6">
+          <p className="text-sm text-red-400">
+            Failed to load runs: {runsError instanceof Error ? runsError.message : "Unknown error"}
+          </p>
         </Card>
       )}
 
@@ -242,6 +260,13 @@ export default function TraceReplay() {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Trace Error */}
+          {!traceLoading && traceError && (
+            <p className="text-sm text-red-400">
+              Failed to load trace: {traceError instanceof Error ? traceError.message : "Unknown error"}
+            </p>
           )}
 
           {/* Timeline Table */}
