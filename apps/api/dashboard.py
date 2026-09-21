@@ -3,6 +3,8 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from packages.cache.memory import MemoryCache
+from packages.cache.redis import RedisCache
 from packages.dashboard.schemas import (
     DashboardFilters,
     PaginatedRuns,
@@ -16,12 +18,26 @@ from packages.domain.database import get_db_session
 router = APIRouter(prefix="/v1/dashboard", tags=["dashboard"])
 
 
+async def get_cache() -> RedisCache | MemoryCache:
+    from apps.api.main import cache_client
+
+    return cache_client
+
+
 @router.get("/projects/{project_id}/stats", response_model=ProjectDashboardStats)
 async def get_project_stats(
     project_id: UUID,
     service: TraceReplayService = Depends(get_trace_replay_service),
+    cache: RedisCache | MemoryCache = Depends(get_cache),
 ):
-    return await service.get_project_stats(project_id)
+    cache_key = f"stats:{project_id}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return ProjectDashboardStats(**cached)
+
+    result = await service.get_project_stats(project_id)
+    await cache.set(cache_key, result.model_dump(), ttl=30)
+    return result
 
 
 @router.get("/projects/{project_id}/runs", response_model=PaginatedRuns)
@@ -35,8 +51,14 @@ async def list_project_runs(
     model_profile: list[str] | None = Query(None),
     search: str | None = Query(None),
     service: TraceReplayService = Depends(get_trace_replay_service),
+    cache: RedisCache | MemoryCache = Depends(get_cache),
 ):
     from datetime import datetime
+
+    cache_key = f"runs:{project_id}:p{page}:s{','.join(status or [])}:m{','.join(model_profile or [])}:{search}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return PaginatedRuns(**cached)
 
     filters = DashboardFilters(
         project_ids=[project_id],
@@ -48,7 +70,9 @@ async def list_project_runs(
         page=page,
         page_size=page_size,
     )
-    return await service.list_runs(project_id=project_id, filters=filters)
+    result = await service.list_runs(project_id=project_id, filters=filters)
+    await cache.set(cache_key, result.model_dump(), ttl=15)
+    return result
 
 
 @router.get("/runs/{run_id}/trace", response_model=RunTraceResponse)
@@ -62,8 +86,14 @@ async def get_run_trace(
     include_evidence: bool = Query(True),
     include_redacted: bool = Query(False),
     service: TraceReplayService = Depends(get_trace_replay_service),
+    cache: RedisCache | MemoryCache = Depends(get_cache),
 ):
     from packages.dashboard.schemas import EventType
+
+    cache_key = f"trace:{run_id}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return RunTraceResponse(**cached)
 
     trace_filter = TraceFilter(
         event_types=[EventType(e) for e in event_types] if event_types else None,
@@ -81,6 +111,7 @@ async def get_run_trace(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Run not found",
         )
+    await cache.set(cache_key, trace.model_dump(), ttl=60)
     return trace
 
 
