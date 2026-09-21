@@ -1,5 +1,7 @@
 import { useState } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { QueryClientProvider } from "@tanstack/react-query"
+import { queryClient } from "@/lib/query-client"
 import { AuthProvider, useAuth } from "@/hooks/use-auth"
 import { ProjectProvider } from "@/contexts/ProjectContext"
 import AppShell from "@/components/layout/AppShell"
@@ -39,10 +41,12 @@ function AuthGate() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <AuthGate />
-      </AuthProvider>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AuthProvider>
+          <AuthGate />
+        </AuthProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   )
 }
