@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from packages.cache.memory import MemoryCache
 from packages.cache.redis import RedisCache
 from packages.dashboard.schemas import (
@@ -27,6 +27,8 @@ async def get_cache() -> RedisCache | MemoryCache:
 @router.get("/projects/{project_id}/stats", response_model=ProjectDashboardStats)
 async def get_project_stats(
     project_id: UUID,
+    request: Request,
+    response: Response,
     service: TraceReplayService = Depends(get_trace_replay_service),
     cache: RedisCache | MemoryCache = Depends(get_cache),
 ):
@@ -36,19 +38,29 @@ async def get_project_stats(
     except Exception:
         cached = None
     if cached:
-        return ProjectDashboardStats(**cached)
+        result = ProjectDashboardStats(**cached)
+    else:
+        result = await service.get_project_stats(project_id)
+        try:
+            await cache.set(cache_key, result.model_dump(), ttl=30)
+        except Exception:
+            pass
 
-    result = await service.get_project_stats(project_id)
-    try:
-        await cache.set(cache_key, result.model_dump(), ttl=30)
-    except Exception:
-        pass
+    etag = f'"{hash(str(result.model_dump()))}"'
+    if request.headers.get("if-none-match") == etag:
+        response.status_code = 304
+        return None
+
+    response.headers["Cache-Control"] = "private, max-age=30"
+    response.headers["ETag"] = etag
     return result
 
 
 @router.get("/projects/{project_id}/runs", response_model=PaginatedRuns)
 async def list_project_runs(
     project_id: UUID,
+    request: Request,
+    response: Response,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status: list[str] | None = Query(None),
@@ -67,23 +79,33 @@ async def list_project_runs(
     except Exception:
         cached = None
     if cached:
-        return PaginatedRuns(**cached)
+        result = PaginatedRuns(**cached)
+    else:
+        filters = DashboardFilters(
+            project_ids=[project_id],
+            statuses=list(status) if status else None,
+            date_from=datetime.fromisoformat(date_from) if date_from else None,
+            date_to=datetime.fromisoformat(date_to) if date_to else None,
+            model_profiles=model_profile,
+            search_query=search,
+            page=page,
+            page_size=page_size,
+        )
+        result = await service.list_runs(project_id=project_id, filters=filters)
+        try:
+            await cache.set(cache_key, result.model_dump(), ttl=15)
+        except Exception:
+            pass
 
-    filters = DashboardFilters(
-        project_ids=[project_id],
-        statuses=list(status) if status else None,
-        date_from=datetime.fromisoformat(date_from) if date_from else None,
-        date_to=datetime.fromisoformat(date_to) if date_to else None,
-        model_profiles=model_profile,
-        search_query=search,
-        page=page,
-        page_size=page_size,
-    )
-    result = await service.list_runs(project_id=project_id, filters=filters)
-    try:
-        await cache.set(cache_key, result.model_dump(), ttl=15)
-    except Exception:
-        pass
+    etag = f'"{hash(str(result.model_dump()))}"'
+    if request.headers.get("if-none-match") == etag:
+        response.status_code = 304
+        return None
+
+    response.headers["Cache-Control"] = "private, max-age=15"
+    response.headers["ETag"] = etag
+    response.headers["X-Total-Count"] = str(result.total)
+    response.headers["X-Total-Pages"] = str(result.total_pages)
     return result
 
 
