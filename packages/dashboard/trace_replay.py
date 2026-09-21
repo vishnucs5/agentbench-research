@@ -18,8 +18,9 @@ from packages.dashboard.schemas import (
     TraceFilter,
 )
 from packages.domain.database import get_session
-from packages.domain.models import EventType, ResearchRun, RunStatus, TraceEvent
-from sqlalchemy import func, select
+from packages.domain.models import EventType, Paper, Project, ResearchRun, RunStatus, TraceEvent
+from sqlalchemy import case, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 
@@ -117,9 +118,7 @@ class TraceReplayService:
         project_id: UUID | None = None,
         filters: DashboardFilters | None = None,
     ) -> PaginatedRuns:
-        from packages.dashboard.schemas import PaginatedRuns
-
-        query = select(ResearchRun).options(selectinload(ResearchRun.trace_events))
+        query = select(ResearchRun)
 
         if project_id:
             query = query.where(ResearchRun.project_id == project_id)
@@ -138,38 +137,37 @@ class TraceReplayService:
             if filters.search_query:
                 query = query.where(ResearchRun.request_text.ilike(f"%{filters.search_query}%"))
 
-        query = query.order_by(ResearchRun.started_at.desc())
-
         page = filters.page if filters else 1
         page_size = filters.page_size if filters else 20
 
-        total_result = await self._session.execute(select(func.count()).select_from(query.subquery()))
+        count_query = select(func.count()).select_from(query.subquery())
+        total_result = await self._session.execute(count_query)
         total = total_result.scalar() or 0
 
-        query = query.offset((page - 1) * 20).limit(20)
+        query = query.order_by(ResearchRun.started_at.desc())
+        query = query.offset((page - 1) * page_size).limit(page_size)
+
         result = await self._session.execute(query)
         runs = result.scalars().all()
 
-        run_items = []
-        for run in runs:
-            tool_calls = sum(1 for e in run.trace_events if e.event_type == EventType.TOOL_CALL)
-            total_latency = sum(e.latency_ms or 0 for e in run.trace_events)
-
-            run_items.append(RunListItem(
-                run_id=run.id,
-                project_id=run.project_id,
-                request_text=run.request_text[:100] + "..." if len(run.request_text) > 100 else run.request_text,
-                status=run.status,
-                model_profile=run.model_profile,
-                started_at=run.started_at,
-                completed_at=run.completed_at,
-                total_latency_ms=total_latency,
-                total_tool_calls=tool_calls,
-                evidence_count=sum(len(e.evidence_ids) for e in run.trace_events),
-            ))
+        items = [
+            RunListItem(
+                run_id=r.id,
+                project_id=r.project_id,
+                request_text=r.request_text[:100] + "..." if len(r.request_text or "") > 100 else (r.request_text or ""),
+                status=r.status,
+                model_profile=r.model_profile or "unknown",
+                started_at=r.started_at,
+                completed_at=r.completed_at,
+                total_latency_ms=r.total_latency_ms,
+                total_tool_calls=r.tool_call_count,
+                evidence_count=r.evidence_count,
+            )
+            for r in runs
+        ]
 
         return PaginatedRuns(
-            runs=run_items,
+            runs=items,
             total=total,
             page=page,
             page_size=page_size,
@@ -177,52 +175,69 @@ class TraceReplayService:
         )
 
     async def get_project_stats(self, project_id: UUID) -> ProjectDashboardStats:
-        from packages.dashboard.schemas import ProjectDashboardStats
+        stats_query = select(
+            func.count(ResearchRun.id).label("total_runs"),
+            func.sum(case((ResearchRun.status == RunStatus.COMPLETED, 1), else_=0)).label("completed_runs"),
+            func.sum(case((ResearchRun.status == RunStatus.FAILED, 1), else_=0)).label("failed_runs"),
+            func.sum(ResearchRun.total_latency_ms).label("total_latency_sum"),
+            func.sum(ResearchRun.evidence_count).label("total_evidence"),
+        ).where(ResearchRun.project_id == project_id)
 
-        runs_result = await self._session.execute(
+        result = await self._session.execute(stats_query)
+        stats = result.one_or_none()
+
+        total_runs = stats.total_runs if stats else 0
+        completed_runs = stats.completed_runs if stats else 0
+        failed_runs = stats.failed_runs if stats else 0
+        total_latency = stats.total_latency_sum or 0
+        total_evidence = stats.total_evidence or 0
+        avg_latency = total_latency / total_runs if total_runs > 0 else 0.0
+
+        project_result = await self._session.execute(
+            select(Project.name).where(Project.id == project_id)
+        )
+        project_name = project_result.scalar_one()
+
+        recent_query = (
             select(ResearchRun)
-            .options(selectinload(ResearchRun.trace_events))
             .where(ResearchRun.project_id == project_id)
             .order_by(ResearchRun.started_at.desc())
+            .limit(5)
         )
-        runs = list(runs_result.scalars().all())
-
-        total_runs = len(runs)
-        completed_runs = sum(1 for r in runs if r.status == RunStatus.COMPLETED)
-        failed_runs = sum(1 for r in runs if r.status == RunStatus.FAILED)
-
-        total_evidence = sum(len(e.evidence_ids) for r in runs for e in r.trace_events)
-        total_latency = sum(e.latency_ms or 0 for r in runs for e in r.trace_events)
-
-        recent_runs = []
-        for run in runs[:5]:
-            tool_calls = sum(1 for e in run.trace_events if e.event_type == EventType.TOOL_CALL)
-            run_evidence_count = sum(len(e.evidence_ids) for e in run.trace_events)
-
-            recent_runs.append(RunListItem(
-                run_id=run.id,
-                project_id=run.project_id,
-                request_text=run.request_text[:100] + "..." if len(run.request_text) > 100 else run.request_text,
-                status=run.status,
-                model_profile=run.model_profile,
-                started_at=run.started_at,
-                completed_at=run.completed_at,
-                total_latency_ms=total_latency,
-                total_tool_calls=tool_calls,
-                evidence_count=run_evidence_count,
-            ))
+        recent_result = await self._session.execute(recent_query)
+        recent_runs = [
+            RunListItem(
+                run_id=r.id,
+                project_id=r.project_id,
+                request_text=r.request_text[:100] + "..." if len(r.request_text or "") > 100 else (r.request_text or ""),
+                status=r.status,
+                model_profile=r.model_profile or "unknown",
+                started_at=r.started_at,
+                completed_at=r.completed_at,
+                total_latency_ms=r.total_latency_ms,
+                total_tool_calls=r.tool_call_count,
+                evidence_count=r.evidence_count,
+            )
+            for r in recent_result.scalars().all()
+        ]
 
         return ProjectDashboardStats(
             project_id=project_id,
-            project_name=f"Project {str(project_id)[:8]}",
-            total_papers=0,
+            project_name=project_name or f"Project {str(project_id)[:8]}",
+            total_papers=await self._count_papers(project_id),
             total_runs=total_runs,
             completed_runs=completed_runs,
             failed_runs=failed_runs,
             total_evidence=total_evidence,
-            avg_latency_ms=total_latency / total_runs if total_runs > 0 else 0,
+            avg_latency_ms=avg_latency,
             recent_runs=recent_runs,
         )
+
+    async def _count_papers(self, project_id: UUID) -> int:
+        result = await self._session.execute(
+            select(func.count(Paper.id)).where(Paper.project_id == project_id)
+        )
+        return result.scalar() or 0
 
     async def get_comparison_dashboard(self, synthesis_id: UUID) -> ComparisonDashboardData:
         return ComparisonDashboardData(

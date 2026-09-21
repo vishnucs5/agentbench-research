@@ -4,14 +4,13 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from packages.domain.database import get_db_session
+from packages.domain.models import Paper, Project, ResearchRun, User
+from packages.security.middleware import get_current_user
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from packages.domain.database import get_db_session
-from packages.domain.models import Project, User
-from packages.security.middleware import get_current_user
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
 
@@ -72,27 +71,32 @@ async def list_projects(
     session: AsyncSession = Depends(get_db_session),
 ):
     result = await session.execute(
-        select(Project)
-        .options(selectinload(Project.papers), selectinload(Project.runs))
+        select(
+            Project,
+            func.count(Paper.id).label("paper_count"),
+            func.count(ResearchRun.id).label("run_count"),
+        )
+        .outerjoin(Paper, Paper.project_id == Project.id)
+        .outerjoin(ResearchRun, ResearchRun.project_id == Project.id)
         .where(Project.owner_id == current_user.id)
+        .group_by(Project.id)
         .order_by(Project.created_at.desc())
     )
-    projects = result.scalars().unique().all()
-    out = []
-    for p in projects:
-        out.append(
-            ProjectResponse(
-                id=str(p.id),
-                owner_id=str(p.owner_id),
-                name=p.name,
-                domain=p.domain,
-                retention_days=p.retention_days,
-                created_at=p.created_at.isoformat(),
-                paper_count=len(p.papers) if p.papers else 0,
-                run_count=len(p.runs) if p.runs else 0,
-            )
+
+    projects = result.all()
+    out = [
+        ProjectResponse(
+            id=str(p.id),
+            owner_id=str(p.owner_id),
+            name=p.name,
+            domain=p.domain,
+            retention_days=p.retention_days,
+            created_at=p.created_at.isoformat(),
+            paper_count=paper_count,
+            run_count=run_count,
         )
-    # Also include a demo project if no projects exist for demo ease
+        for p, paper_count, run_count in projects
+    ]
     if not out:
         demo_id = str(uuid.uuid4())
         out.append(
