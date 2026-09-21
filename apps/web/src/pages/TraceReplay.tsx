@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from "react"
-import { traceApi } from "@/lib/api"
+import { useState } from "react"
+import { useRuns, useRunTrace } from "@/hooks/runs"
 import { formatDuration } from "@/lib/utils"
 import { useProject } from "@/contexts/ProjectContext"
 import { Button } from "@/components/ui/button"
@@ -7,13 +7,6 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -24,12 +17,10 @@ import {
 } from "@/components/ui/table"
 import StatusBadge from "@/components/dashboard/StatusBadge"
 import EmptyState from "@/components/dashboard/EmptyState"
-import { useToast } from "@/hooks/use-toast"
+import Pagination from "@/components/dashboard/Pagination"
 import { RefreshCw, ClipboardList, Search } from "lucide-react"
-import type { RunListItem, RunTrace } from "@/types"
 
 const STATUS_FILTERS: { label: string; value: string }[] = [
-  { label: "All Statuses", value: "all" },
   { label: "Completed", value: "completed" },
   { label: "Failed", value: "failed" },
   { label: "Running", value: "running" },
@@ -44,80 +35,28 @@ function truncateId(id: string): string {
 
 export default function TraceReplay() {
   const { selectedProject } = useProject()
-  const [runs, setRuns] = useState<RunListItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
-  const [traceLoading, setTraceLoading] = useState(false)
-  const [trace, setTrace] = useState<RunTrace | null>(null)
+  const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const { toast } = useToast()
+  const [statusFilter, setStatusFilter] = useState<string[]>([])
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (selectedProject) {
-      loadRuns()
-    }
-  }, [selectedProject])
+  const { data: runsData, isLoading } = useRuns({
+    projectId: selectedProject?.id ?? null,
+    page,
+    status: statusFilter.length > 0 ? statusFilter : undefined,
+    search: searchQuery || undefined,
+  })
 
-  useEffect(() => {
-    if (selectedRunId) {
-      loadTrace(selectedRunId)
-    } else {
-      setTrace(null)
-    }
-  }, [selectedRunId])
+  const { data: trace, isLoading: traceLoading } = useRunTrace(selectedRunId)
 
-  async function loadRuns() {
-    if (!selectedProject) return
-    try {
-      setLoading(true)
-      const res = await traceApi.listRuns(selectedProject.id)
-      setRuns(res.runs ?? [])
-    } catch (err) {
-      toast({
-        title: "Failed to load runs",
-        description: err instanceof Error ? err.message : "Unknown error",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
+  const runs = runsData?.runs ?? []
+
+  function handleStatusToggle(status: string) {
+    setStatusFilter((prev) =>
+      prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
+    )
+    setPage(1)
   }
-
-  async function loadTrace(runId: string) {
-    try {
-      setTraceLoading(true)
-      const data = await traceApi.getRun(runId)
-      setTrace(data)
-    } catch (err) {
-      toast({
-        title: "Failed to load trace",
-        description: err instanceof Error ? err.message : "Unknown error",
-        variant: "destructive",
-      })
-    } finally {
-      setTraceLoading(false)
-    }
-  }
-
-  const filteredRuns = useMemo(() => {
-    let result = runs
-
-    if (statusFilter !== "all") {
-      result = result.filter((r) => r.status === statusFilter)
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      result = result.filter(
-        (r) =>
-          r.request_text.toLowerCase().includes(q) ||
-          r.model_profile.toLowerCase().includes(q)
-      )
-    }
-
-    return result
-  }, [runs, searchQuery, statusFilter])
 
   function handleRowClick(runId: string) {
     setSelectedRunId((prev) => (prev === runId ? null : runId))
@@ -142,10 +81,10 @@ export default function TraceReplay() {
           variant="outline"
           size="sm"
           className="border-[#1E293B] bg-[#101A26] text-white hover:border-[#CFFF4B] hover:text-[#CFFF4B]"
-          onClick={loadRuns}
-          disabled={loading || !selectedProject}
+          disabled={isLoading || !selectedProject}
+          onClick={() => setPage((p) => p)}
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           Reload
         </Button>
         <div className="relative flex-1 max-w-sm">
@@ -153,26 +92,32 @@ export default function TraceReplay() {
           <Input
             placeholder="Search request text..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              setPage(1)
+            }}
             className="bg-[#0D1420] border-[#1E293B] text-white placeholder:text-[#64748B] pl-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[160px] bg-[#0D1420] border-[#1E293B] text-white">
-            <SelectValue placeholder="All Statuses" />
-          </SelectTrigger>
-          <SelectContent className="bg-[#101A26] border-[#1E293B]">
-            {STATUS_FILTERS.map((f) => (
-              <SelectItem key={f.value} value={f.value} className="text-white focus:bg-[#1E293B] focus:text-white">
-                {f.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-1 flex-wrap">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => handleStatusToggle(f.value)}
+              className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                statusFilter.includes(f.value)
+                  ? "bg-[#CFFF4B]/10 border-[#CFFF4B] text-[#CFFF4B]"
+                  : "bg-[#0D1420] border-[#1E293B] text-[#94A3B8] hover:border-[#64748B]"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Loading State */}
-      {loading && (
+      {isLoading && (
         <Card className="bg-[#101A26] border-[#1E293B] p-6">
           <div className="space-y-4">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -190,7 +135,7 @@ export default function TraceReplay() {
       )}
 
       {/* Empty State */}
-      {!loading && runs.length === 0 && (
+      {!isLoading && runs.length === 0 && (
         <Card className="bg-[#101A26] border-[#1E293B] p-12">
           <EmptyState
             icon={ClipboardList}
@@ -201,7 +146,7 @@ export default function TraceReplay() {
       )}
 
       {/* Runs Table */}
-      {!loading && runs.length > 0 && (
+      {!isLoading && runs.length > 0 && (
         <Card className="bg-[#101A26] border-[#1E293B]">
           <Table>
             <TableHeader>
@@ -215,14 +160,7 @@ export default function TraceReplay() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRuns.length === 0 && (
-                <TableRow className="border-[#1E293B]">
-                  <TableCell colSpan={6} className="text-center text-[#64748B] py-8">
-                    No matching runs found.
-                  </TableCell>
-                </TableRow>
-              )}
-              {filteredRuns.map((run) => (
+              {runs.map((run) => (
                 <TableRow
                   key={run.run_id}
                   className={`border-[#1E293B] cursor-pointer transition-colors ${
@@ -248,6 +186,11 @@ export default function TraceReplay() {
               ))}
             </TableBody>
           </Table>
+          <Pagination
+            currentPage={page}
+            totalPages={runsData?.total_pages ?? 1}
+            onPageChange={setPage}
+          />
         </Card>
       )}
 
