@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { useRuns, useRunTrace } from "@/hooks/use-runs"
+import { useWebSocket } from "@/hooks/use-websocket"
 import { formatDuration } from "@/lib/utils"
 import { useProject } from "@/contexts/ProjectContext"
 import { Button } from "@/components/ui/button"
@@ -18,6 +20,7 @@ import {
 import StatusBadge from "@/components/dashboard/StatusBadge"
 import EmptyState from "@/components/dashboard/EmptyState"
 import Pagination from "@/components/dashboard/Pagination"
+import LiveIndicator from "@/components/dashboard/LiveIndicator"
 import { RefreshCw, ClipboardList, Search } from "lucide-react"
 
 const STATUS_FILTERS: { label: string; value: string }[] = [
@@ -35,6 +38,8 @@ function truncateId(id: string): string {
 
 export default function TraceReplay() {
   const { selectedProject } = useProject()
+  const { isConnected, lastMessage } = useWebSocket(selectedProject?.id ?? null)
+  const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
   const [searchInput, setSearchInput] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
@@ -63,6 +68,13 @@ export default function TraceReplay() {
 
   const runs = runsData?.runs ?? []
 
+  useEffect(() => {
+    if (lastMessage?.type === "run_update") {
+      queryClient.invalidateQueries({ queryKey: ["runs"] })
+      queryClient.invalidateQueries({ queryKey: ["stats"] })
+    }
+  }, [lastMessage, queryClient])
+
   function handleStatusToggle(status: string) {
     setStatusFilter((prev) =>
       prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
@@ -77,14 +89,17 @@ export default function TraceReplay() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="space-y-1">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#CFFF4B]">
-          TRACE REPLAY
-        </p>
-        <h1 className="text-3xl font-bold text-white">Trace Replay</h1>
-        <p className="text-[#64748B]">
-          State transitions · Tool calls · Evidence IDs · Latency · Retries · Errors · Redacted
-        </p>
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#CFFF4B]">
+            TRACE REPLAY
+          </p>
+          <h1 className="text-3xl font-bold text-white">Trace Replay</h1>
+          <p className="text-[#64748B]">
+            State transitions · Tool calls · Evidence IDs · Latency · Retries · Errors · Redacted
+          </p>
+        </div>
+        <LiveIndicator isConnected={isConnected} />
       </div>
 
       {/* Controls */}

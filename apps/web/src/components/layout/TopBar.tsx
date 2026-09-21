@@ -1,5 +1,7 @@
 import { useAuth } from "@/hooks/use-auth"
 import { useProject } from "@/contexts/ProjectContext"
+import { useWebSocket } from "@/hooks/use-websocket"
+import LiveIndicator from "@/components/dashboard/LiveIndicator"
 import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
@@ -12,6 +14,7 @@ import { FolderOpen } from "lucide-react"
 export default function TopBar() {
   const { logout } = useAuth()
   const { projects, selectedProject, setSelectedProject } = useProject()
+  const { isConnected } = useWebSocket(selectedProject?.id ?? null)
 
   return (
     <header className="flex h-14 items-center gap-4 border-b border-border bg-panel px-6">
@@ -56,9 +59,8 @@ export default function TopBar() {
           </kbd>
         </div>
 
-        <div className="hidden items-center gap-2 text-[10px] text-muted-foreground lg:flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-          Live API
+        <div className="hidden items-center gap-2 lg:flex">
+          <LiveIndicator isConnected={isConnected} />
         </div>
 
         <DropdownMenu>
