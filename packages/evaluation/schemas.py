@@ -60,6 +60,7 @@ class EvaluationRun(BaseModel):
     status: str = "running"
     total_tasks: int = 0
     completed_tasks: int = 0
+    results: list[Any] = Field(default_factory=list)
 
 
 class TaskResult(BaseModel):

@@ -122,10 +122,10 @@ class ExtractionService:
 
         try:
             paper = await self._session.get(Paper, paper_id)
-        except Exception:
-            return
+        except Exception as e:
+            raise ValueError(f"Paper {paper_id} not found: {e}") from e
         if paper is None:
-            return
+            raise ValueError(f"Paper {paper_id} not found")
         status = getattr(paper, "status", None)
         if isinstance(status, PaperStatus):
             if status not in (PaperStatus.PARSED, PaperStatus.INDEXED):
@@ -247,8 +247,8 @@ class ExtractionService:
                     for ch in chunks:
                         if getattr(ch, "embedding_ref", None) == raw:
                             return ch.id  # type: ignore[return-value]
-                    if chunks:
-                        return chunks[0].id  # type: ignore[return-value]
+                    # No canonical Qdrant-to-DB id mapping exists; never fall
+                    # back to chunks[0] (wrong linkage). Fall through to raise.
                 except Exception:
                     pass
         except Exception:

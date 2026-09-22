@@ -29,7 +29,13 @@ class ReportGenerationService:
 
     async def generate_report(self, request: ReportRequest) -> ReportResponse:
         synthesis = None
-        if request.synthesis_id is not None or request.paper_ids:
+        # No persistent synthesis store exists (no synthesis table), so a
+        # load-by-id path is unavailable. Attempt any opt-in cache exposed by
+        # the synthesis service; otherwise re-run from paper_ids. The requested
+        # synthesis_id is intentionally not stamped onto a fresh result.
+        if request.synthesis_id is not None:
+            synthesis = self._lookup_cached_synthesis(request.synthesis_id)
+        if synthesis is None and (request.synthesis_id is not None or request.paper_ids):
             from packages.synthesis.schemas import SynthesisRequest
 
             synth_request = SynthesisRequest(
@@ -37,11 +43,6 @@ class ReportGenerationService:
                 paper_ids=request.paper_ids,
             )
             synthesis = await self.synthesis_service.run_synthesis(synth_request)
-            if request.synthesis_id is not None:
-                try:
-                    object.__setattr__(synthesis, "synthesis_id", request.synthesis_id)
-                except Exception:
-                    pass
 
         sections = []
         citations = []
@@ -112,6 +113,34 @@ class ReportGenerationService:
             evidence_ids=list(set(all_evidence_ids)),
             verification_result=verification_result,
         )
+
+    def _lookup_cached_synthesis(self, synthesis_id: UUID) -> Any | None:
+        # Best-effort load-by-id: probe for an opt-in cache/store on the
+        # synthesis service. No such store exists today, so this returns None
+        # and the caller falls through to re-run.
+        svc: Any = self.synthesis_service
+        for attr in ("store", "_store", "cache", "_cache", "syntheses", "_syntheses"):
+            candidate = getattr(svc, attr, None)
+            if isinstance(candidate, dict) and synthesis_id in candidate:
+                return candidate[synthesis_id]
+            if isinstance(candidate, dict):
+                key = str(synthesis_id)
+                if key in candidate:
+                    return candidate[key]
+        get_by_id = getattr(svc, "get_synthesis", None) or getattr(svc, "get_by_id", None)
+        if callable(get_by_id):
+            try:
+                import asyncio
+
+                result = get_by_id(synthesis_id)
+                if asyncio.iscoroutine(result):
+                    # Caller is async but this helper is sync; no event loop
+                    # juggling here — treat as unavailable and re-run.
+                    return None
+                return result
+            except Exception:
+                return None
+        return None
 
     def _build_comparison_section(self, table) -> ReportSection:
         lines = [f"## {table.comparison_type.value.title()} Comparison"]

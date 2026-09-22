@@ -140,6 +140,7 @@ class EvaluationRunner:
 
         run.completed_at = datetime.utcnow()
         run.status = "completed"
+        run.results = results
         self.last_results = results
         return run
 
@@ -154,9 +155,16 @@ class EvaluationRunner:
                     pid = getattr(paper, "project_id", None) if paper is not None else None
                     if isinstance(pid, UUID):
                         return pid
+                    if isinstance(pid, str):
+                        try:
+                            return UUID(str(pid))
+                        except (ValueError, AttributeError, TypeError):
+                            pass
             except Exception:
                 pass
-            return task.paper_ids[0]
+            # No project linkage available; never reuse the paper UUID as a
+            # project UUID (different entity types). Mint a fresh run id.
+            return uuid.uuid4()
         return uuid.uuid4()
 
     async def _run_task(
@@ -315,21 +323,57 @@ class MetricCalculator:
         return matches / len(gold) if gold else 0.0
 
     @staticmethod
+    def _verification_counts(verification_result: Any) -> tuple[int, int, int]:
+        def _status_str(s: Any) -> str:
+            v = getattr(s, "value", s)
+            return str(v).lower() if v is not None else ""
+
+        claims: Any = None
+        if isinstance(verification_result, dict):
+            claims = verification_result.get("atomic_claims", verification_result.get("details"))
+        else:
+            claims = getattr(verification_result, "atomic_claims", None)
+        if isinstance(claims, list) and claims:
+            total = len(claims)
+            verified = 0
+            partial = 0
+            unsupported = 0
+            for c in claims:
+                st: Any = c.get("status") if isinstance(c, dict) else getattr(c, "status", None)
+                s = _status_str(st)
+                if s == "verified":
+                    verified += 1
+                elif s in ("partially_verified", "partially_supported"):
+                    partial += 1
+                elif s in ("unsupported", "contradicted"):
+                    unsupported += 1
+            return total, verified + partial, unsupported
+        if isinstance(verification_result, dict):
+            total = int(verification_result.get("total_claims", 0) or 0)
+            supported = int(verification_result.get("verified_claims", 0) or 0) + int(
+                verification_result.get("partially_verified_claims", 0) or 0
+            )
+            unsupported = int(verification_result.get("unsupported_claims_count", 0) or 0)
+            return total, supported, unsupported
+        total = int(getattr(verification_result, "total_claims", 0) or 0)
+        supported = int(getattr(verification_result, "verified_claims", 0) or 0) + int(
+            getattr(verification_result, "partially_verified_claims", 0) or 0
+        )
+        unsupported = int(getattr(verification_result, "unsupported_claims_count", 0) or 0)
+        return total, supported, unsupported
+
+    @staticmethod
     def calculate_citation_precision(verification_result: dict) -> float:
-        total = verification_result.get("total_claims", 0)
+        total, supported, _ = MetricCalculator._verification_counts(verification_result)
         if total == 0:
             return 0.0
-        supported = verification_result.get("verified_claims", 0) + verification_result.get(
-            "partially_verified_claims", 0
-        )
         return supported / total
 
     @staticmethod
     def calculate_unsupported_claim_rate(verification_result: dict) -> float:
-        total = verification_result.get("total_claims", 0)
+        total, _, unsupported = MetricCalculator._verification_counts(verification_result)
         if total == 0:
             return 0.0
-        unsupported = verification_result.get("unsupported_claims_count", 0)
         return unsupported / total
 
     @staticmethod
@@ -420,8 +464,26 @@ async def run_evaluation(
         )
         efficiencies.append(MetricCalculator.calculate_tool_efficiency(r))
         exec_times.append(float(r.execution_time_ms))
-        precisions.append(1.0 if r.error is None else 0.0)
-        unsupported_rates.append(0.0 if r.error is None else 1.0)
+        verification_payload: Any | None = None
+        details = sys_out.get("details")
+        if isinstance(details, list) and details:
+            verification_payload = {"atomic_claims": details}
+        else:
+            for key in ("verification_result", "verification"):
+                cand = sys_out.get(key)
+                if isinstance(cand, dict) and (
+                    cand.get("atomic_claims") or cand.get("details") or cand.get("total_claims")
+                ):
+                    verification_payload = cand
+                    break
+        if verification_payload is not None:
+            precisions.append(MetricCalculator.calculate_citation_precision(verification_payload))
+            unsupported_rates.append(
+                MetricCalculator.calculate_unsupported_claim_rate(verification_payload)
+            )
+        else:
+            precisions.append(1.0 if r.error is None else 0.0)
+            unsupported_rates.append(0.0 if r.error is None else 1.0)
 
     def _mean(xs: list[float]) -> float:
         return sum(xs) / len(xs) if xs else 0.0
