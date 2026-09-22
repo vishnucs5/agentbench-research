@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 100
     rate_limit_window_seconds: int = 60
 
+    # Demo mode (passwordless local use; NEVER active in production)
+    demo_mode: bool = False  # was True; NEVER active in production
+    demo_user_email: str = "demo@test.com"
+
+    # Local fallbacks (used when MinIO/Qdrant are unreachable)
+    local_storage_path: str = "data/papers"
+    bm25_index_path: str = "data/bm25_index.pkl"
+
     # Observability
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_service_name: str = "agentbench-research"

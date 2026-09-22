@@ -2,30 +2,29 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from .config import get_settings
 from .models import Base
 
 settings = get_settings()
 
-# Use SQLite for local development if PostgreSQL not available
 database_url = str(settings.database_url)
-if database_url.startswith("postgresql") and settings.app_env == "development":
-    # Check if we can use SQLite instead for local dev
-    sqlite_path = Path("agentbench.db")
-    database_url = f"sqlite+aiosqlite:///{sqlite_path}"
-
-engine = create_async_engine(
-    database_url,
-    echo=settings.is_development,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-    connect_args={"check_same_thread": False} if "sqlite" in database_url else {},
-)
+use_sqlite = database_url.startswith("sqlite")
+# REMOVE postgresql->sqlite override in development; honor DATABASE_URL as-is.
+# Only default to sqlite when DATABASE_URL is unset (handled by Settings default).
+if "sqlite" in database_url:
+    engine = create_async_engine(
+        database_url, echo=False, poolclass=NullPool,
+        connect_args={"check_same_thread": False},
+    )
+else:
+    engine = create_async_engine(
+        database_url, echo=settings.is_development,
+        pool_size=10, max_overflow=20, pool_pre_ping=True,
+    )
 
 async_session_factory = async_sessionmaker(
     engine,
@@ -46,6 +45,11 @@ async def close_db() -> None:
 
 @asynccontextmanager
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    """Yield a session and commit on clean exit.
+
+    Read-only callers must not rely on auto-commit; commit explicitly
+    where a write is intended.
+    """
     async with async_session_factory() as session:
         try:
             yield session
