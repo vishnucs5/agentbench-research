@@ -1,29 +1,33 @@
-FROM python:3.11-slim
+# Vite/React frontend (see apps/web/package.json) — Node build that serves
+# the production bundle with `vite preview`. (The Streamlit variant only
+# applies if apps/web is ever replaced by a non-Node app.)
+FROM node:20-slim
 
-WORKDIR /app
+WORKDIR /app/apps/web
+
+# Build-time API origin for the browser. Compose also sets API_BASE_URL
+# at runtime; the built SPA defaults to relative URLs proxied in dev
+# (see apps/web/vite.config.ts server.proxy).
+ARG VITE_API_BASE_URL=http://localhost:8000
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV API_BASE_URL=http://localhost:8000
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
-    curl \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml .
-COPY packages ./packages
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN npm ci
 
-RUN pip install --no-cache-dir -e ./packages/domain \
-    && pip install --no-cache-dir -e ./packages/agent \
-    && pip install --no-cache-dir -e ./packages/retrieval \
-    && pip install --no-cache-dir -e ./packages/ingestion \
-    && pip install --no-cache-dir -e ./packages/extraction \
-    && pip install --no-cache-dir -e ./packages/synthesis \
-    && pip install --no-cache-dir -e ./packages/evaluation \
-    && pip install --no-cache-dir -e ./packages/observability \
-    && pip install --no-cache-dir -e ./packages/security
+COPY apps/web ./
 
-COPY apps/web ./apps/web
+# vite.config.ts sets outDir to ../api/static for local dev; in the image
+# we build into ./dist so `vite preview` serves the bundle self-contained
+# (no dependency on the api container's static dir).
+RUN npm run build -- --outDir dist
 
-RUN pip install --no-cache-dir -e ./apps/web \
-    && pip install --no-cache-dir streamlit
+EXPOSE 5173
 
-EXPOSE 8501
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD wget -qO- http://localhost:5173/ | grep -q root || exit 1
+
+CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173"]
