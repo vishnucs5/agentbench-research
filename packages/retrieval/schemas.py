@@ -5,7 +5,7 @@ from enum import Enum as PyEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SearchType(PyEnum):
@@ -55,6 +55,12 @@ class ChunkRequest(BaseModel):
     chunk_size: int = Field(default=512, ge=100, le=2000)
     chunk_overlap: int = Field(default=50, ge=0, le=500)
     preserve_sections: bool = True
+
+    @model_validator(mode="after")
+    def _validate_overlap(self) -> ChunkRequest:
+        if not 0 <= self.chunk_overlap < self.chunk_size:
+            raise ValueError("chunk_overlap must satisfy 0 <= overlap < size")
+        return self
 
 
 class ChunkResponse(BaseModel):

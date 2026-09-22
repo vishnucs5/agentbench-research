@@ -20,12 +20,18 @@ class Chunk:
 
 
 class ChunkingService:
-    def __init__(self, chunk_size: int = 512, chunk_overlap: int = 50, preserve_sections: bool = True):
+    def __init__(
+        self, chunk_size: int = 512, chunk_overlap: int = 50, preserve_sections: bool = True
+    ):
+        if not (0 <= chunk_overlap < chunk_size):
+            raise ValueError("chunk_overlap must satisfy 0 <= overlap < size")
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.preserve_sections = preserve_sections
 
-    def chunk_paper(self, paper: ParsedPaper, paper_id: uuid.UUID, request: ChunkRequest | None = None) -> list[Chunk]:
+    def chunk_paper(
+        self, paper: ParsedPaper, paper_id: uuid.UUID, request: ChunkRequest | None = None
+    ) -> list[Chunk]:
         if request:
             chunk_size = request.chunk_size
             chunk_overlap = request.chunk_overlap
@@ -35,7 +41,7 @@ class ChunkingService:
             chunk_overlap = self.chunk_overlap
             preserve_sections = self.preserve_sections
 
-        all_chunks = []
+        all_chunks: list[Chunk] = []
 
         for page in paper.pages:
             page_chunks = self._chunk_page(
@@ -63,7 +69,7 @@ class ChunkingService:
 
         if preserve_sections and page.section_label:
             sections = self._split_by_sections(text, page.section_label)
-            chunks = []
+            chunks: list[Chunk] = []
             for section_text, section_label in sections:
                 section_chunks = self._create_chunks(
                     text=section_text,
@@ -85,12 +91,15 @@ class ChunkingService:
                 chunk_overlap=chunk_overlap,
             )
 
-    def _split_by_sections(self, text: str, default_section: str | None) -> list[tuple[str, str | None]]:
+    def _split_by_sections(
+        self, text: str, default_section: str | None
+    ) -> list[tuple[str, str | None]]:
         import re
+
         lines = text.split("\n")
-        sections = []
+        sections: list[tuple[str, str | None]] = []
         current_section = default_section
-        current_text = []
+        current_text: list[str] = []
 
         for line in lines:
             header_match = re.match(r"^(\d+(\.\d+)*)\s+(.+)$", line.strip())
@@ -116,11 +125,13 @@ class ChunkingService:
         chunk_size: int,
         chunk_overlap: int,
     ) -> list[Chunk]:
+        if not (0 <= chunk_overlap < chunk_size):
+            raise ValueError("chunk_overlap must satisfy 0 <= overlap < size")
         words = text.split()
         if not words:
             return []
 
-        chunks = []
+        chunks: list[Chunk] = []
         start = 0
 
         while start < len(words):

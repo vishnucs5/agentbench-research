@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 
@@ -9,6 +10,17 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models as qdrant_models
 from qdrant_client.http.exceptions import UnexpectedResponse
 
+logger = logging.getLogger(__name__)
+
+
+def _point_id(chunk_id: str) -> str:
+    """Derive a deterministic Qdrant-compatible UUID from a chunk_id.
+
+    Qdrant point ids must be UUID or int; chunk_ids are human-readable
+    strings like ``{paper_id}-p{page}-c{n}``, so map them via UUID5.
+    """
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
+
 
 class QdrantStore:
     def __init__(self, collection_name: str = "papers"):
@@ -17,12 +29,10 @@ class QdrantStore:
         self._client = QdrantClient(url=settings.qdrant_url)
         self._ensure_collection()
 
-    def _ensure_collection(self) -> None:
+    def _ensure_collection(self, dimension: int = 384) -> None:
         try:
             self._client.get_collection(self.collection_name)
         except UnexpectedResponse:
-            dimension = 384
-
             self._client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=qdrant_models.VectorParams(
@@ -57,10 +67,19 @@ class QdrantStore:
         chunks: list[dict[str, Any]],
         embeddings: list[list[float]],
     ) -> None:
-        points = []
-        for chunk, embedding in zip(chunks, embeddings, strict=False):
+        if not chunks or not embeddings:
+            return
+        if len(chunks) != len(embeddings):
+            raise ValueError("chunks and embeddings length mismatch")
+        dimension = len(embeddings[0]) if embeddings and embeddings[0] else 384
+        try:
+            self._client.get_collection(self.collection_name)
+        except UnexpectedResponse:
+            self._ensure_collection(dimension=dimension)
+        points: list[qdrant_models.PointStruct] = []
+        for chunk, embedding in zip(chunks, embeddings, strict=True):
             point = qdrant_models.PointStruct(
-                id=chunk["chunk_id"],
+                id=_point_id(str(chunk["chunk_id"])),
                 vector=embedding,
                 payload={
                     "paper_id": str(chunk["paper_id"]),
@@ -83,7 +102,7 @@ class QdrantStore:
             wait=True,
         )
 
-    def delete_paper_chunks(self, paper_id: uuid.UUID) -> None:
+    def delete_paper_chunks(self, paper_id: uuid.UUID | str) -> None:
         self._client.delete(
             collection_name=self.collection_name,
             points_selector=qdrant_models.FilterSelector(
@@ -107,15 +126,15 @@ class QdrantStore:
     ) -> list[EvidenceHit]:
         query_filter = self._build_filter(filters) if filters else None
 
-        results = self._client.search(
+        response = self._client.query_points(
             collection_name=self.collection_name,
-            query_vector=query_embedding,
-            limit=top_k,
+            query=query_embedding,
             query_filter=query_filter,
+            limit=top_k,
             with_payload=True,
         )
 
-        return self._results_to_hits(results, SearchType.SEMANTIC)
+        return self._results_to_hits(response.points, SearchType.SEMANTIC)
 
     def search_bm25(
         self,
@@ -125,15 +144,20 @@ class QdrantStore:
     ) -> list[EvidenceHit]:
         query_filter = self._build_filter(filters) if filters else None
 
-        results = self._client.query(
+        try:
+            document = qdrant_models.Document(text=query_text, model="qdrant/bm25")
+        except Exception:
+            logger.warning("BM25 Document query unavailable; returning no Qdrant BM25 hits")
+            return []
+        response = self._client.query_points(
             collection_name=self.collection_name,
-            query_text=query_text,
+            query=document,
             query_filter=query_filter,
             limit=top_k,
             with_payload=True,
         )
 
-        return self._results_to_hits(results, SearchType.BM25)
+        return self._results_to_hits(response.points, SearchType.BM25)
 
     def hybrid_search(
         self,
@@ -150,8 +174,8 @@ class QdrantStore:
         combined = self._combine_hits(semantic_hits, bm25_hits, semantic_weight, bm25_weight)
         return combined[:top_k]
 
-    def _build_filter(self, filters: dict[str, Any]) -> qdrant_models.Filter:
-        must = []
+    def _build_filter(self, filters: dict[str, Any]) -> qdrant_models.Filter | None:
+        must: list[Any] = []
 
         if "paper_ids" in filters and filters["paper_ids"]:
             must.append(
@@ -195,20 +219,40 @@ class QdrantStore:
 
         return qdrant_models.Filter(must=must) if must else None
 
-    def _results_to_hits(self, results: list, search_type: SearchType) -> list[EvidenceHit]:
-        hits = []
+    def _results_to_hits(self, results: list[Any], search_type: SearchType) -> list[EvidenceHit]:
+        hits: list[EvidenceHit] = []
         for result in results:
-            payload = result.payload
+            payload = result.payload or {}
+            paper_id = payload.get("paper_id")
+            text = payload.get("text")
+            if not paper_id or not text:
+                continue
+            try:
+                paper_uuid = uuid.UUID(str(paper_id))
+            except ValueError:
+                continue
+            page_number = payload.get("page_number", 1)
+            try:
+                page_number = int(page_number)
+            except (TypeError, ValueError):
+                page_number = 1
+            try:
+                score = float(result.score)
+            except (TypeError, ValueError):
+                score = 0.0
+            metadata = payload.get("metadata", {})
+            if not isinstance(metadata, dict):
+                metadata = {}
             hit = EvidenceHit(
                 evidence_id=f"ev_{result.id}",
-                paper_id=uuid.UUID(payload["paper_id"]),
-                paper_title=payload.get("title", "Unknown"),
-                page_number=payload["page_number"],
+                paper_id=paper_uuid,
+                paper_title=str(payload.get("title", "Unknown")),
+                page_number=page_number,
                 section_label=payload.get("section_label"),
-                text=payload["text"],
-                score=float(result.score),
+                text=str(text),
+                score=score,
                 search_type=search_type,
-                metadata=payload.get("metadata", {}),
+                metadata=metadata,
             )
             hits.append(hit)
         return hits
@@ -224,8 +268,9 @@ class QdrantStore:
 
         for hit in semantic_hits:
             key = f"{hit.paper_id}-{hit.page_number}-{hit.text[:50]}"
-            hit.score = hit.score * semantic_weight
-            hit_map[key] = hit
+            weighted = hit.model_copy()
+            weighted.score = hit.score * semantic_weight
+            hit_map[key] = weighted
 
         for hit in bm25_hits:
             key = f"{hit.paper_id}-{hit.page_number}-{hit.text[:50]}"
@@ -233,9 +278,10 @@ class QdrantStore:
                 hit_map[key].score += hit.score * bm25_weight
                 hit_map[key].search_type = SearchType.HYBRID
             else:
-                hit.score = hit.score * bm25_weight
-                hit.search_type = SearchType.HYBRID
-                hit_map[key] = hit
+                weighted = hit.model_copy()
+                weighted.score = hit.score * bm25_weight
+                weighted.search_type = SearchType.HYBRID
+                hit_map[key] = weighted
 
         combined = list(hit_map.values())
         combined.sort(key=lambda h: h.score, reverse=True)
@@ -243,10 +289,13 @@ class QdrantStore:
 
     def get_collection_info(self) -> dict[str, Any]:
         info = self._client.get_collection(self.collection_name)
+        vectors_count = getattr(info, "indexed_vectors_count", None)
+        if vectors_count is None:
+            vectors_count = getattr(info, "vectors_count", 0) or 0
         return {
-            "vectors_count": info.vectors_count,
-            "points_count": info.points_count,
-            "status": info.status,
+            "vectors_count": vectors_count or 0,
+            "points_count": info.points_count or 0,
+            "status": str(info.status),
         }
 
 

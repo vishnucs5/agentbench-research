@@ -1,16 +1,26 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import pickle
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from packages.domain.config import get_settings
 from packages.ingestion.schemas import ParsedPaper
 from packages.retrieval.chunker import ChunkingService
 from packages.retrieval.embeddings import EmbeddingService
-from packages.retrieval.qdrant_store import QdrantStore
-from packages.retrieval.schemas import SearchRequest, SearchResponse, SearchType
+from packages.retrieval.schemas import (
+    EvidenceHit,
+    SearchRequest,
+    SearchResponse,
+    SearchType,
+)
 from rank_bm25 import BM25Okapi
+
+logger = logging.getLogger(__name__)
 
 
 class RetrievalService:
@@ -18,13 +28,25 @@ class RetrievalService:
         self,
         chunker: ChunkingService | None = None,
         embedder: EmbeddingService | None = None,
-        qdrant: QdrantStore | None = None,
-    ):
+        qdrant: Any | None = None,
+    ) -> None:
         self.chunker = chunker or ChunkingService()
         self.embedder = embedder or EmbeddingService()
-        self.qdrant = qdrant or QdrantStore()
+        self.qdrant = qdrant
+        if self.qdrant is None:
+            try:
+                from packages.retrieval.qdrant_store import QdrantStore
+
+                self.qdrant = QdrantStore()
+            except Exception as e:
+                logger.warning("Qdrant unavailable (%s); using local BM25 only", e)
+                self.qdrant = None
         self._bm25_index: BM25Okapi | None = None
         self._bm25_corpus: list[dict[str, Any]] = []
+        try:
+            self.load_bm25_index()
+        except Exception as e:
+            logger.warning("Could not load persisted BM25 index (%s)", e)
 
     async def index_paper(
         self,
@@ -33,11 +55,37 @@ class RetrievalService:
         project_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        chunks = self.chunker.chunk_paper(paper, paper_id)
+        chunks = self.chunker.chunk_paper(paper, paper_id)  # type: ignore[arg-type]
 
-        chunk_dicts = []
+        paper_title = "Unknown"
+        try:
+            candidate = paper.metadata.title if paper.metadata else None
+            if candidate:
+                paper_title = candidate
+            elif metadata:
+                candidate = metadata.get("paper_title") or metadata.get("title")
+                if candidate:
+                    paper_title = str(candidate)
+        except Exception:
+            pass
+
+        allowed = {
+            "chunk_id",
+            "paper_id",
+            "project_id",
+            "page_number",
+            "section_label",
+            "text",
+            "token_count",
+            "metadata",
+        }
+        safe_meta = {
+            k: v for k, v in (metadata or {}).items() if k not in allowed or k == "paper_title"
+        }
+
+        chunk_dicts: list[dict[str, Any]] = []
         for chunk in chunks:
-            chunk_dict = {
+            chunk_dict: dict[str, Any] = {
                 "chunk_id": chunk.chunk_id,
                 "paper_id": str(chunk.paper_id),
                 "project_id": project_id or "",
@@ -46,45 +94,85 @@ class RetrievalService:
                 "text": chunk.text,
                 "token_count": chunk.token_count,
                 "metadata": chunk.metadata,
+                "paper_title": paper_title,
+                "title": paper_title,
             }
-            if metadata:
-                chunk_dict.update(metadata)
+            chunk_dict.update(safe_meta)
             chunk_dicts.append(chunk_dict)
 
-        texts = [c["text"] for c in chunk_dicts]
-        embeddings = self.embedder.embed_batch(texts)
+        texts: list[str] = [str(c["text"]) for c in chunk_dicts]
+        embeddings: list[list[float]] = []
+        embedded = False
+        try:
+            if texts:
+                embeddings = await asyncio.to_thread(self.embedder.embed_batch, texts)
+            else:
+                embeddings = []
+            embedded = True
+        except Exception as e:
+            logger.warning("Embedding failed, indexing text-only (%s)", e)
 
-        self.qdrant.upsert_chunks(chunk_dicts, embeddings)
+        assert len(chunk_dicts) == len(embeddings) or not embedded, "embedding count mismatch"
 
-        self._update_bm25_index(chunk_dicts)
+        qdrant_indexed = False
+        if self.qdrant is not None and embedded:
+            try:
+                self.qdrant.upsert_chunks(chunk_dicts, embeddings)
+                qdrant_indexed = True
+            except Exception as e:
+                logger.warning("Qdrant upsert failed (%s)", e)
+
+        bm25_indexed = False
+        try:
+            self._update_bm25_index(chunk_dicts)
+            self.save_bm25_index()
+            bm25_indexed = True
+        except Exception as e:
+            logger.warning("Could not persist BM25 index (%s)", e)
 
         return {
             "chunk_count": len(chunks),
             "embedded_count": len(embeddings),
-            "bm25_indexed": True,
+            "bm25_indexed": bm25_indexed,
+            "vector_indexed": qdrant_indexed,
         }
 
     def _update_bm25_index(self, chunk_dicts: list[dict[str, Any]]) -> None:
-        new_texts = [c["text"] for c in chunk_dicts]
+        # Dedup by chunk_id so re-indexing never duplicates the corpus.
+        incoming_by_id: dict[str, dict[str, Any]] = {}
+        for c in chunk_dicts:
+            incoming_by_id[str(c.get("chunk_id", ""))] = c
+        deduped_incoming = list(incoming_by_id.values())
+        incoming_ids = set(incoming_by_id.keys())
+        if incoming_ids:
+            self._bm25_corpus = [
+                c for c in self._bm25_corpus if str(c.get("chunk_id", "")) not in incoming_ids
+            ]
+        else:
+            # Nothing new with valid ids; keep corpus as-is.
+            pass
+        new_texts = [str(c.get("text", "")) for c in deduped_incoming]
         tokenized = [self._tokenize(t) for t in new_texts]
 
         if self._bm25_index is None:
-            self._bm25_corpus = chunk_dicts
+            self._bm25_corpus = deduped_incoming
             self._bm25_index = BM25Okapi(tokenized)
         else:
-            self._bm25_corpus.extend(chunk_dicts)
-            all_tokenized = [self._tokenize(c["text"]) for c in self._bm25_corpus]
+            self._bm25_corpus.extend(deduped_incoming)
+            all_tokenized = [self._tokenize(str(c.get("text", ""))) for c in self._bm25_corpus]
             self._bm25_index = BM25Okapi(all_tokenized)
 
     def _tokenize(self, text: str) -> list[str]:
         import re
+
         return re.findall(r"\b\w+\b", text.lower())
 
     async def search(self, request: SearchRequest) -> SearchResponse:
         import time
+
         start_time = time.perf_counter()
 
-        filters = {}
+        filters: dict[str, Any] = {}
         if request.project_id:
             filters["project_id"] = request.project_id
         if request.paper_ids:
@@ -96,25 +184,50 @@ class RetrievalService:
         if request.author:
             filters["author"] = request.author
 
-        query_embedding = self.embedder.embed_single(request.query)
+        if self._bm25_index is None:
+            try:
+                self.load_bm25_index()
+            except Exception as e:
+                logger.warning("Could not load persisted BM25 index (%s)", e)
 
-        if request.search_type == SearchType.SEMANTIC:
-            hits = self.qdrant.search_semantic(query_embedding, request.top_k, filters)
-        elif request.search_type == SearchType.BM25:
-            hits = self.qdrant.search_bm25(request.query, request.top_k, filters)
-        else:
-            hits = self.qdrant.hybrid_search(
-                request.query,
-                query_embedding,
-                request.top_k,
-                request.bm25_weight,
-                request.semantic_weight,
-                filters,
+        hits: list[EvidenceHit] = []
+        if request.search_type == SearchType.BM25:
+            hits = self._search_with_fallback(
+                lambda: (
+                    self.qdrant.search_bm25(request.query, request.top_k, filters)
+                    if self.qdrant is not None
+                    else self.search_bm25_local(request.query, request.top_k, filters)
+                ),
+                lambda: self.search_bm25_local(request.query, request.top_k, filters),
             )
+        else:
+            query_embedding: list[float] | None = None
+            try:
+                query_embedding = await asyncio.to_thread(self.embedder.embed_single, request.query)
+            except Exception as e:
+                logger.warning("Query embedding failed (%s)", e)
+            if query_embedding is not None and self.qdrant is not None:
+                try:
+                    if request.search_type == SearchType.SEMANTIC:
+                        hits = self.qdrant.search_semantic(query_embedding, request.top_k, filters)
+                    else:
+                        hits = self.qdrant.hybrid_search(
+                            request.query,
+                            query_embedding,
+                            request.top_k,
+                            request.bm25_weight,
+                            request.semantic_weight,
+                            filters,
+                        )
+                except Exception as e:
+                    logger.warning("Vector search failed, falling back to local BM25 (%s)", e)
+                    hits = self.search_bm25_local(request.query, request.top_k, filters)
+            else:
+                hits = self.search_bm25_local(request.query, request.top_k, filters)
 
         hits = [h for h in hits if h.score >= request.score_threshold]
 
-        not_enough = len(hits) == 0 or (hits and hits[0].score < 0.3)
+        not_enough = len(hits) == 0 or (bool(hits) and hits[0].score < request.score_threshold)
 
         took_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -127,11 +240,81 @@ class RetrievalService:
             not_enough_evidence=not_enough,
         )
 
+    @staticmethod
+    def _search_with_fallback(
+        primary: Callable[[], list[EvidenceHit]],
+        fallback: Callable[[], list[EvidenceHit]],
+    ) -> list[EvidenceHit]:
+        try:
+            return primary()
+        except Exception as e:
+            logger.warning("Primary search failed, using local BM25 fallback (%s)", e)
+            return fallback()
+
+    def _filter_corpus(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
+        corpus = self._bm25_corpus
+        project_id = str(filters.get("project_id") or "")
+        paper_ids = {str(p) for p in (filters.get("paper_ids") or [])}
+        if project_id:
+            corpus = [c for c in corpus if str(c.get("project_id", "")) == project_id]
+        if paper_ids:
+            corpus = [c for c in corpus if str(c.get("paper_id", "")) in paper_ids]
+        return corpus
+
+    def search_bm25_local(
+        self, query: str, top_k: int, filters: dict[str, Any] | None = None
+    ) -> list[EvidenceHit]:
+        """Keyword search over the local BM25 corpus (no Qdrant/embeddings)."""
+
+        filters = filters or {}
+        corpus = self._filter_corpus(filters)
+        if not corpus or self._bm25_index is None:
+            return []
+        tokenized = [self._tokenize(str(c.get("text", ""))) for c in corpus]
+        index = BM25Okapi(tokenized)
+        scores = index.get_scores(self._tokenize(query))
+        ranked = sorted(zip(corpus, scores, strict=True), key=lambda x: x[1], reverse=True)[:top_k]
+        hits: list[EvidenceHit] = []
+        for chunk, score in ranked:
+            try:
+                paper_uuid = UUID(str(chunk.get("paper_id", "")))
+            except ValueError:
+                continue
+            hits.append(
+                EvidenceHit(
+                    evidence_id=str(chunk.get("chunk_id", "")),
+                    paper_id=paper_uuid,
+                    paper_title=str(chunk.get("paper_title") or chunk.get("title") or "Unknown"),
+                    page_number=int(chunk.get("page_number", 1)),
+                    section_label=chunk.get("section_label"),
+                    text=str(chunk.get("text", "")),
+                    score=float(score),
+                    search_type=SearchType.BM25,
+                    metadata=dict(chunk.get("metadata") or {}),
+                )
+            )
+        return hits
+
+    def rebuild_local_index(self, chunk_dicts: list[dict[str, Any]]) -> None:
+        """Replace the in-memory BM25 corpus (e.g. after loading chunks from DB)."""
+        self._bm25_corpus = list(chunk_dicts)
+        if chunk_dicts:
+            tokenized = [self._tokenize(str(c.get("text", ""))) for c in chunk_dicts]
+            self._bm25_index = BM25Okapi(tokenized)
+        else:
+            self._bm25_index = None
+
     def delete_paper(self, paper_id: str) -> None:
-        self.qdrant.delete_paper_chunks(paper_id)
-        self._bm25_corpus = [c for c in self._bm25_corpus if c["paper_id"] != paper_id]
+        if self.qdrant is not None:
+            try:
+                self.qdrant.delete_paper_chunks(paper_id)
+            except Exception as e:
+                logger.warning("Qdrant delete failed (%s)", e)
+        self._bm25_corpus = [
+            c for c in self._bm25_corpus if str(c.get("paper_id", "")) != str(paper_id)
+        ]
         if self._bm25_corpus:
-            all_tokenized = [self._tokenize(c["text"]) for c in self._bm25_corpus]
+            all_tokenized = [self._tokenize(str(c.get("text", ""))) for c in self._bm25_corpus]
             self._bm25_index = BM25Okapi(all_tokenized)
         else:
             self._bm25_index = None
@@ -139,16 +322,27 @@ class RetrievalService:
     def save_bm25_index(self, path: str | None = None) -> None:
         if path is None:
             settings = get_settings()
-            path = f"{settings.gold_set_path}/bm25_index.pkl"
+            path = settings.bm25_index_path
 
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "wb") as f:
-            pickle.dump({"index": self._bm25_index, "corpus": self._bm25_corpus}, f)
+        try:
+            target = Path(path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_suffix(target.suffix + ".tmp")
+            with open(tmp, "wb") as f:
+                pickle.dump({"index": self._bm25_index, "corpus": self._bm25_corpus}, f)
+            tmp.replace(target)
+        except Exception as e:
+            logger.warning("Could not persist BM25 index (%s)", e)
+            raise
 
     def load_bm25_index(self, path: str | None = None) -> bool:
         if path is None:
-            settings = get_settings()
-            path = f"{settings.gold_set_path}/bm25_index.pkl"
+            try:
+                settings = get_settings()
+                path = settings.bm25_index_path
+            except Exception as e:
+                logger.warning("Could not resolve BM25 index path (%s)", e)
+                return False
 
         try:
             with open(path, "rb") as f:
@@ -157,6 +351,9 @@ class RetrievalService:
             self._bm25_corpus = data["corpus"]
             return True
         except FileNotFoundError:
+            return False
+        except Exception as e:
+            logger.warning("Could not load persisted BM25 index (%s)", e)
             return False
 
 
