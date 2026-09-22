@@ -43,12 +43,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def _resolve_demo_user(self) -> User | None:
         """Passwordless demo identity for local use.
 
-        Active only when demo_mode is on AND the app is not running in
-        production. Provisions the demo user on first use.
+        BY DESIGN: demo fallback stays when demo_mode is explicitly on.
+        Default is demo_mode=False (Task 2); production is fail-closed via
+        is_production. Keep `if not settings.demo_mode or
+        settings.is_production: return None`. Provisions demo user on first use.
         """
         from packages.domain.config import get_settings
 
         settings = get_settings()
+        # BY DESIGN: demo fallback only when explicitly enabled; fail-closed
+        # in production. 401 repro must use demo_mode=False (default).
         if not settings.demo_mode or settings.is_production:
             return None
         async with get_session() as session:
@@ -111,7 +115,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Always DB lookup for correctness; cache is write-through only.
         # Removed buggy `UserModel(**cached_user)` construction which dropped
-        # required fields and mixed str vs UUID for user_id.
+        # required fields and mixed str vs UUID for user_id. Cache-hit never
+        # skips DB; auth decision (incl. is_active) always comes from DB.
         user: User | None = None
         async with get_session() as session:
             result = await session.execute(select(User).where(User.id == payload.user_id))
@@ -224,10 +229,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 async def _get_demo_user() -> User | None:
-    """Shared demo-mode fallback for dependency-injected auth."""
+    """Shared demo-mode fallback for dependency-injected auth.
+
+    BY DESIGN: kept for explicit demo_mode=True local use only; default
+    demo_mode=False and is_production fail-closed (401 without token).
+    """
     from packages.domain.config import get_settings
 
     settings = get_settings()
+    # BY DESIGN: do not remove fallback; 401 repro uses demo_mode=False.
     if not settings.demo_mode or settings.is_production:
         return None
     async with get_session() as session:

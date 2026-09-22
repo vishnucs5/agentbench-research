@@ -70,6 +70,11 @@ class TestAuthMiddlewareCaching:
         assert call_args[1]["ttl"] == 300
 
     def test_uses_cached_user_skips_db(self, mock_user, mock_auth_service):
+        """New contract: cache is write-through only, always DB lookup.
+
+        Legacy name kept for CI. Cache-hit never skips DB (removed buggy
+        UserModel(**cached_user) str-vs-UUID path); auth comes from DB.
+        """
         auth_service, payload = mock_auth_service
         mock_cache = AsyncMock()
         mock_cache.get.return_value = {
@@ -90,6 +95,13 @@ class TestAuthMiddlewareCaching:
         client = TestClient(app, raise_server_exceptions=False)
 
         with patch("packages.security.middleware.get_session") as mock_get_session:
+            mock_session = AsyncMock()
+            mock_result = MagicMock()
+            mock_result.scalar_one_or_none.return_value = mock_user
+            mock_session.execute.return_value = mock_result
+            mock_get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_get_session.return_value.__aexit__ = AsyncMock(return_value=False)
+
             with patch("packages.security.middleware.AuthMiddleware._get_cache", new_callable=AsyncMock, return_value=mock_cache):
                 response = client.get(
                     "/protected",
@@ -97,7 +109,7 @@ class TestAuthMiddlewareCaching:
                 )
 
         assert response.status_code == 200
-        mock_get_session.assert_not_called()
+        mock_get_session.assert_called()
 
     def test_cache_failure_falls_back_to_db(self, mock_user, mock_auth_service):
         auth_service, payload = mock_auth_service
@@ -161,15 +173,26 @@ class TestAuthMiddlewareCaching:
         assert response.status_code == 200
 
     def test_inactive_cached_user_rejected(self, mock_auth_service):
+        """New contract: is_active decision comes from DB, not cache."""
+        import uuid
+
         auth_service, payload = mock_auth_service
         mock_cache = AsyncMock()
+        # Cache says active, but DB says inactive -> must still 401.
         mock_cache.get.return_value = {
             "id": str(payload.user_id),
             "email": "test@example.com",
             "full_name": "Test User",
             "role": "researcher",
-            "is_active": False,
+            "is_active": True,
         }
+        inactive_user = MagicMock()
+        inactive_user.id = payload.user_id or uuid.uuid4()
+        inactive_user.email = "test@example.com"
+        inactive_user.full_name = "Test User"
+        inactive_user.is_active = False
+        inactive_user.role = MagicMock()
+        inactive_user.role.value = "researcher"
 
         app = FastAPI()
         app.add_middleware(AuthMiddleware, auth_service=auth_service)
@@ -180,10 +203,19 @@ class TestAuthMiddlewareCaching:
 
         client = TestClient(app, raise_server_exceptions=False)
 
-        with patch("packages.security.middleware.AuthMiddleware._get_cache", new_callable=AsyncMock, return_value=mock_cache):
-            response = client.get(
-                "/protected",
-                headers={"Authorization": "Bearer fake-token"},
-            )
+        with patch("packages.security.middleware.get_session") as mock_get_session:
+            mock_session = AsyncMock()
+            mock_result = MagicMock()
+            mock_result.scalar_one_or_none.return_value = inactive_user
+            mock_session.execute.return_value = mock_result
+            mock_get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_get_session.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with patch("packages.security.middleware.AuthMiddleware._get_cache", new_callable=AsyncMock, return_value=mock_cache):
+                response = client.get(
+                    "/protected",
+                    headers={"Authorization": "Bearer fake-token"},
+                )
 
         assert response.status_code == 401
+        mock_get_session.assert_called()

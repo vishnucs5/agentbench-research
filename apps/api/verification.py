@@ -1,23 +1,28 @@
 from __future__ import annotations
 
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from packages.domain.database import get_db_session
 from packages.domain.models import Project, User
-from packages.extraction.service import get_extraction_service
-from packages.retrieval.service import get_retrieval_service
+from packages.extraction.service import ExtractionService, get_extraction_service
+from packages.retrieval.service import RetrievalService, get_retrieval_service
 from packages.security.middleware import get_current_user
-from packages.synthesis.service import get_synthesis_service
-from packages.verification.report_generator import get_report_generation_service
+from packages.synthesis.service import SynthesisService, get_synthesis_service
+from packages.verification.report_generator import (
+    ReportGenerationService,
+    get_report_generation_service,
+)
 from packages.verification.schemas import (
     ReportRequest,
     ReportResponse,
     VerificationRequest,
     VerificationResult,
 )
-from packages.verification.verifier import get_citation_verification_service
+from packages.verification.verifier import (
+    CitationVerificationService,
+    get_citation_verification_service,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,9 +53,11 @@ async def verify_draft(
     request: VerificationRequest,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-    extraction_service: Any = Depends(get_extraction_service),
-    retrieval_service: Any = Depends(get_retrieval_service),
-    verification_service: Any = Depends(get_citation_verification_service),
+    extraction_service: ExtractionService = Depends(get_extraction_service),
+    retrieval_service: RetrievalService = Depends(get_retrieval_service),
+    verification_service: CitationVerificationService = Depends(
+        get_citation_verification_service
+    ),
 ) -> VerificationResult:
     await _require_owned_project(session, project_id, current_user)
     return await verification_service.verify_draft(request)
@@ -66,11 +73,13 @@ async def generate_report(
     request: ReportRequest,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-    extraction_service: Any = Depends(get_extraction_service),
-    synthesis_service: Any = Depends(get_synthesis_service),
-    retrieval_service: Any = Depends(get_retrieval_service),
-    verification_service: Any = Depends(get_citation_verification_service),
-    report_service: Any = Depends(get_report_generation_service),
+    extraction_service: ExtractionService = Depends(get_extraction_service),
+    synthesis_service: SynthesisService = Depends(get_synthesis_service),
+    retrieval_service: RetrievalService = Depends(get_retrieval_service),
+    verification_service: CitationVerificationService = Depends(
+        get_citation_verification_service
+    ),
+    report_service: ReportGenerationService = Depends(get_report_generation_service),
 ) -> ReportResponse:
     await _require_owned_project(session, project_id, current_user)
     request.project_id = project_id

@@ -125,7 +125,13 @@ async def get_project_index_stats(
 ) -> dict[str, object]:
     await _require_owned_project(session, project_id, current_user)
     qdrant = service.qdrant
-    info = qdrant.get_collection_info()
+    if qdrant is None:
+        return {
+            "project_id": str(project_id),
+            "total_chunks": 0,
+            "collection_status": "unavailable",
+        }
+    info = qdrant.get_collection_info() or {}
     return {
         "project_id": str(project_id),
         "total_chunks": info.get("points_count", 0),

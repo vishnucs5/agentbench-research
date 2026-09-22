@@ -73,7 +73,6 @@ async def get_project_stats(
 ) -> ProjectDashboardStats | None:
     await _require_owned_project(session, project_id, current_user)
     cache_key = f"stats:{project_id}"
-    cache_key = f"stats:{project_id}"
     try:
         cached = await cache.get(cache_key)
     except Exception:
