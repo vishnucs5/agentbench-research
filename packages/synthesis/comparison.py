@@ -81,24 +81,32 @@ class ComparisonService:
                     cells.append(self._empty_cell(pid, claim.get("claim_text", "Not reported")))
                     continue
 
-                norm_entity = self.normalizer.normalize_model(str(value)) if attr_key == "name" else None
-                cells.append(ComparisonCell(
-                    paper_id=pid,
-                    paper_title=claim.get("paper_title", "Unknown"),
-                    value=NormalizedValue(
-                        value=norm_entity.normalized_value if norm_entity else value,
-                        confidence=norm_entity.confidence if norm_entity else 0.8,
-                        source_claim_ids=[claim.get("claim_id")] if claim.get("claim_id") else [],
-                    ),
-                    claim_id=claim.get("claim_id"),
-                    evidence_ids=claim.get("evidence_ids", []),
-                ))
+                norm_entity = (
+                    self.normalizer.normalize_model(str(value)) if attr_key == "name" else None
+                )
+                cells.append(
+                    ComparisonCell(
+                        paper_id=pid,
+                        paper_title=claim.get("paper_title", "Unknown"),
+                        value=NormalizedValue(
+                            value=norm_entity.normalized_value if norm_entity else value,
+                            confidence=norm_entity.confidence if norm_entity else 0.8,
+                            source_claim_ids=[claim.get("claim_id")]
+                            if claim.get("claim_id")
+                            else [],
+                        ),
+                        claim_id=claim.get("claim_id"),
+                        evidence_ids=claim.get("evidence_ids", []),
+                    )
+                )
 
-            rows.append(ComparisonRow(
-                attribute=attr_label,
-                attribute_type=ComparisonType.MODEL,
-                cells=cells,
-            ))
+            rows.append(
+                ComparisonRow(
+                    attribute=attr_label,
+                    attribute_type=ComparisonType.MODEL,
+                    cells=cells,
+                )
+            )
 
         return rows
 
@@ -128,24 +136,36 @@ class ComparisonService:
                 normalized = claim.get("normalized_value", {})
                 value = normalized.get(attr_key)
 
-                norm_entity = self.normalizer.normalize_dataset(str(value)) if attr_key == "name" and value else None
-                cells.append(ComparisonCell(
-                    paper_id=pid,
-                    paper_title=claim.get("paper_title", "Unknown"),
-                    value=NormalizedValue(
-                        value=norm_entity.normalized_value if norm_entity else (value or "Not reported"),
-                        confidence=norm_entity.confidence if norm_entity else 0.8,
-                        source_claim_ids=[claim.get("claim_id")] if claim.get("claim_id") else [],
-                    ),
-                    claim_id=claim.get("claim_id"),
-                    evidence_ids=claim.get("evidence_ids", []),
-                ))
+                norm_entity = (
+                    self.normalizer.normalize_dataset(str(value))
+                    if attr_key == "name" and value
+                    else None
+                )
+                cells.append(
+                    ComparisonCell(
+                        paper_id=pid,
+                        paper_title=claim.get("paper_title", "Unknown"),
+                        value=NormalizedValue(
+                            value=norm_entity.normalized_value
+                            if norm_entity
+                            else (value or "Not reported"),
+                            confidence=norm_entity.confidence if norm_entity else 0.8,
+                            source_claim_ids=[claim.get("claim_id")]
+                            if claim.get("claim_id")
+                            else [],
+                        ),
+                        claim_id=claim.get("claim_id"),
+                        evidence_ids=claim.get("evidence_ids", []),
+                    )
+                )
 
-            rows.append(ComparisonRow(
-                attribute=attr_label,
-                attribute_type=ComparisonType.DATASET,
-                cells=cells,
-            ))
+            rows.append(
+                ComparisonRow(
+                    attribute=attr_label,
+                    attribute_type=ComparisonType.DATASET,
+                    cells=cells,
+                )
+            )
 
         return rows
 
@@ -180,18 +200,25 @@ class ComparisonService:
                     metrics = normalized.get("metrics", [])
                     for m in metrics:
                         m_name = m if isinstance(m, str) else m.get("name", "")
-                        if self.normalizer.normalize_metric(m_name).normalized_value == norm_metric.normalized_value:
-                            cells.append(ComparisonCell(
-                                paper_id=pid,
-                                paper_title=claim.get("paper_title", "Unknown"),
-                                value=NormalizedValue(
-                                    value=norm_metric.normalized_value,
-                                    confidence=0.8,
-                                    source_claim_ids=[claim.get("claim_id")] if claim.get("claim_id") else [],
-                                ),
-                                claim_id=claim.get("claim_id"),
-                                evidence_ids=claim.get("evidence_ids", []),
-                            ))
+                        if (
+                            self.normalizer.normalize_metric(m_name).normalized_value
+                            == norm_metric.normalized_value
+                        ):
+                            cells.append(
+                                ComparisonCell(
+                                    paper_id=pid,
+                                    paper_title=claim.get("paper_title", "Unknown"),
+                                    value=NormalizedValue(
+                                        value=norm_metric.normalized_value,
+                                        confidence=0.8,
+                                        source_claim_ids=[claim.get("claim_id")]
+                                        if claim.get("claim_id")
+                                        else [],
+                                    ),
+                                    claim_id=claim.get("claim_id"),
+                                    evidence_ids=claim.get("evidence_ids", []),
+                                )
+                            )
                             found = True
                             break
                     if found:
@@ -200,11 +227,13 @@ class ComparisonService:
                 if not found:
                     cells.append(self._empty_cell(pid, "Not reported"))
 
-            rows.append(ComparisonRow(
-                attribute=norm_metric.normalized_value,
-                attribute_type=ComparisonType.METRICS,
-                cells=cells,
-            ))
+            rows.append(
+                ComparisonRow(
+                    attribute=norm_metric.normalized_value,
+                    attribute_type=ComparisonType.METRICS,
+                    cells=cells,
+                )
+            )
 
         return rows
 
@@ -232,39 +261,79 @@ class ComparisonService:
                 normalized = claim.get("normalized_value", {})
                 value = normalized.get(attr_key, "Not reported")
 
-                cells.append(ComparisonCell(
-                    paper_id=pid,
-                    paper_title=claim.get("paper_title", "Unknown"),
-                    value=NormalizedValue(
-                        value=value,
-                        confidence=0.8,
-                        source_claim_ids=[claim.get("claim_id")] if claim.get("claim_id") else [],
-                    ),
-                    claim_id=claim.get("claim_id"),
-                    evidence_ids=claim.get("evidence_ids", []),
-                ))
+                cells.append(
+                    ComparisonCell(
+                        paper_id=pid,
+                        paper_title=claim.get("paper_title", "Unknown"),
+                        value=NormalizedValue(
+                            value=value,
+                            confidence=0.8,
+                            source_claim_ids=[claim.get("claim_id")]
+                            if claim.get("claim_id")
+                            else [],
+                        ),
+                        claim_id=claim.get("claim_id"),
+                        evidence_ids=claim.get("evidence_ids", []),
+                    )
+                )
 
-            rows.append(ComparisonRow(
-                attribute=attr_label,
-                attribute_type=ComparisonType.PREPROCESSING,
-                cells=cells,
-            ))
+            rows.append(
+                ComparisonRow(
+                    attribute=attr_label,
+                    attribute_type=ComparisonType.PREPROCESSING,
+                    cells=cells,
+                )
+            )
 
         return rows
+
+    def _flatten_metric_results(self, metric_results: dict[str, Any]) -> dict[str, Any]:
+        flat: dict[str, Any] = {}
+        for metric, result in metric_results.items():
+            if isinstance(result, dict) and "value" in result:
+                flat[metric] = result.get("value")
+            elif isinstance(result, dict):
+                if not result:
+                    flat[metric] = result
+                else:
+                    for sub_k, sub_v in result.items():
+                        flat[f"{metric} {sub_k}"] = sub_v
+            else:
+                flat[metric] = result
+        return flat
+
+    def _extract_numeric(self, result: Any) -> float | None:
+        try:
+            if isinstance(result, dict):
+                if "value" in result:
+                    v = result.get("value")
+                    return float(v) if v is not None else None
+                for v in result.values():
+                    try:
+                        return float(v)  # type: ignore[arg-type]
+                    except (ValueError, TypeError):
+                        continue
+                return None
+            if result is None:
+                return None
+            return float(result)  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            return None
 
     def _build_results_comparison(
         self,
         paper_ids: list[UUID],
         paper_claims: dict[UUID, dict[ClaimType, list[dict[str, Any]]]],
     ) -> list[ComparisonRow]:
-        all_metrics = set()
+        all_metrics: set[str] = set()
         for pid in paper_ids:
             claims = paper_claims.get(pid, {}).get(ClaimType.RESULTS, [])
             for claim in claims:
                 normalized = claim.get("normalized_value", {})
                 metric_results = normalized.get("metric_results", {})
-                for m in metric_results:
-                    all_metrics.add(m)
+                if isinstance(metric_results, dict):
+                    for m in self._flatten_metric_results(metric_results).keys():
+                        all_metrics.add(m)
 
         rows = []
         for metric in sorted(all_metrics):
@@ -275,30 +344,39 @@ class ComparisonService:
                 for claim in claims:
                     normalized = claim.get("normalized_value", {})
                     metric_results = normalized.get("metric_results", {})
-                    if metric in metric_results:
-                        result = metric_results[metric]
-                        cells.append(ComparisonCell(
-                            paper_id=pid,
-                            paper_title=claim.get("paper_title", "Unknown"),
-                            value=NormalizedValue(
-                                value=result,
-                                confidence=0.8,
-                                source_claim_ids=[claim.get("claim_id")] if claim.get("claim_id") else [],
-                            ),
-                            claim_id=claim.get("claim_id"),
-                            evidence_ids=claim.get("evidence_ids", []),
-                        ))
+                    flat = self._flatten_metric_results(
+                        metric_results if isinstance(metric_results, dict) else {}
+                    )
+                    if metric in flat:
+                        result = flat[metric]
+                        cells.append(
+                            ComparisonCell(
+                                paper_id=pid,
+                                paper_title=claim.get("paper_title", "Unknown"),
+                                value=NormalizedValue(
+                                    value=result,
+                                    confidence=0.8,
+                                    source_claim_ids=[claim.get("claim_id")]
+                                    if claim.get("claim_id")
+                                    else [],
+                                ),
+                                claim_id=claim.get("claim_id"),
+                                evidence_ids=claim.get("evidence_ids", []),
+                            )
+                        )
                         found = True
                         break
 
                 if not found:
                     cells.append(self._empty_cell(pid, "Not reported"))
 
-            rows.append(ComparisonRow(
-                attribute=metric,
-                attribute_type=ComparisonType.RESULTS,
-                cells=cells,
-            ))
+            rows.append(
+                ComparisonRow(
+                    attribute=metric,
+                    attribute_type=ComparisonType.RESULTS,
+                    cells=cells,
+                )
+            )
 
         return rows
 
@@ -307,57 +385,76 @@ class ComparisonService:
         paper_ids: list[UUID],
         paper_claims: dict[UUID, dict[ClaimType, list[dict[str, Any]]]],
     ) -> list[ComparisonRow]:
-        all_limitation_keys = set()
+        categories: dict[str, list[tuple[UUID, dict[str, Any]]]] = {}
         for pid in paper_ids:
             claims = paper_claims.get(pid, {}).get(ClaimType.LIMITATIONS, [])
             for claim in claims:
                 normalized = claim.get("normalized_value", {})
-                lim_text = normalized.get("limitation_text", "")
-                if lim_text:
-                    words = lim_text.lower().split()
-                    for w in words:
-                        if len(w) > 4:
-                            all_limitation_keys.add(w)
+                if not isinstance(normalized, dict):
+                    continue
+                key = normalized.get("category", "general") or "general"
+                key = str(key).strip().lower() or "general"
+                categories.setdefault(key, []).append((pid, claim))
 
         rows = []
-        for key in sorted(all_limitation_keys)[:10]:
+        for key in sorted(categories.keys()):
             cells = []
+            by_pid: dict[UUID, dict[str, Any]] = {}
+            for pid, claim in categories[key]:
+                if pid not in by_pid:
+                    by_pid[pid] = claim
             for pid in paper_ids:
-                claims = paper_claims.get(pid, {}).get(ClaimType.LIMITATIONS, [])
-                found = False
-                for claim in claims:
+                claim = by_pid.get(pid)
+                if claim is not None:
                     normalized = claim.get("normalized_value", {})
-                    lim_text = normalized.get("limitation_text", "").lower()
-                    if key in lim_text:
-                        cells.append(ComparisonCell(
+                    cells.append(
+                        ComparisonCell(
                             paper_id=pid,
                             paper_title=claim.get("paper_title", "Unknown"),
                             value=NormalizedValue(
                                 value=normalized.get("limitation_text", "Reported"),
                                 confidence=0.8,
-                                source_claim_ids=[claim.get("claim_id")] if claim.get("claim_id") else [],
+                                source_claim_ids=[claim.get("claim_id")]
+                                if claim.get("claim_id")
+                                else [],
                             ),
                             claim_id=claim.get("claim_id"),
                             evidence_ids=claim.get("evidence_ids", []),
-                        ))
-                        found = True
-                        break
+                        )
+                    )
+                else:
+                    first_title = self._first_title_for_pid(paper_ids, paper_claims, pid)
+                    cells.append(self._empty_cell(pid, "Not mentioned", paper_title=first_title))
 
-                if not found:
-                    cells.append(self._empty_cell(pid, "Not mentioned"))
-
-            rows.append(ComparisonRow(
-                attribute=f"Limitation: {key}",
-                attribute_type=ComparisonType.LIMITATIONS,
-                cells=cells,
-            ))
+            rows.append(
+                ComparisonRow(
+                    attribute=f"Limitation: {key}",
+                    attribute_type=ComparisonType.LIMITATIONS,
+                    cells=cells,
+                )
+            )
 
         return rows
 
-    def _empty_cell(self, paper_id: UUID, value: str) -> ComparisonCell:
+    def _first_title_for_pid(
+        self,
+        paper_ids: list[UUID],
+        paper_claims: dict[UUID, dict[ClaimType, list[dict[str, Any]]]],
+        pid: UUID,
+    ) -> str:
+        for claims_by_type in paper_claims.get(pid, {}).values():
+            for claim in claims_by_type:
+                title = claim.get("paper_title")
+                if isinstance(title, str) and title:
+                    return title
+        return "Unknown"
+
+    def _empty_cell(
+        self, paper_id: UUID, value: str, paper_title: str = "Unknown"
+    ) -> ComparisonCell:
         return ComparisonCell(
             paper_id=paper_id,
-            paper_title="Unknown",
+            paper_title=paper_title,
             value=NormalizedValue(
                 value=value,
                 confidence=0.0,
@@ -394,26 +491,28 @@ class ComparisonService:
 
         papers = list(preprocessing_by_paper.keys())
         for i, pid1 in enumerate(papers):
-            for pid2 in papers[i+1:]:
+            for pid2 in papers[i + 1 :]:
                 steps1 = preprocessing_by_paper[pid1]
                 steps2 = preprocessing_by_paper[pid2]
                 if steps1 and steps2 and steps1 != steps2:
                     diff1 = steps1 - steps2
                     diff2 = steps2 - steps1
                     if diff1 or diff2:
-                        conflicts.append(Conflict(
-                            conflict_id=uuid.uuid4(),
-                            conflict_type=ConflictType.INCOMPATIBLE_PREPROCESSING,
-                            paper_ids=[pid1, pid2],
-                            description="Different preprocessing steps between papers",
-                            details={
-                                "paper1_steps": list(steps1),
-                                "paper2_steps": list(steps2),
-                                "paper1_only": list(diff1),
-                                "paper2_only": list(diff2),
-                            },
-                            severity="medium",
-                        ))
+                        conflicts.append(
+                            Conflict(
+                                conflict_id=uuid.uuid4(),
+                                conflict_type=ConflictType.INCOMPATIBLE_PREPROCESSING,
+                                paper_ids=[pid1, pid2],
+                                description="Different preprocessing steps between papers",
+                                details={
+                                    "paper1_steps": list(steps1),
+                                    "paper2_steps": list(steps2),
+                                    "paper1_only": list(diff1),
+                                    "paper2_only": list(diff2),
+                                },
+                                severity="medium",
+                            )
+                        )
 
         return conflicts
 
@@ -438,16 +537,26 @@ class ComparisonService:
 
         for metric, defs_by_paper in metric_defs.items():
             if len(defs_by_paper) > 1:
-                unique_defs = set(defs_by_paper.values())
-                if len(unique_defs) > 1:
-                    conflicts.append(Conflict(
-                        conflict_id=uuid.uuid4(),
-                        conflict_type=ConflictType.DIFFERENT_METRIC_DEFINITIONS,
-                        paper_ids=list(defs_by_paper.keys()),
-                        description=f"Different definitions for metric '{metric}'",
-                        details={"definitions": defs_by_paper},
-                        severity="high",
-                    ))
+                import json
+
+                def _freeze(v: Any) -> str:
+                    try:
+                        return json.dumps(v, sort_keys=True, default=str)
+                    except Exception:
+                        return str(v)
+
+                unique = {_freeze(v) for v in defs_by_paper.values()}
+                if len(unique) > 1:
+                    conflicts.append(
+                        Conflict(
+                            conflict_id=uuid.uuid4(),
+                            conflict_type=ConflictType.DIFFERENT_METRIC_DEFINITIONS,
+                            paper_ids=list(defs_by_paper.keys()),
+                            description=f"Different definitions for metric '{metric}'",
+                            details={"definitions": defs_by_paper},
+                            severity="high",
+                        )
+                    )
 
         return conflicts
 
@@ -456,41 +565,42 @@ class ComparisonService:
         paper_claims: dict[UUID, dict[ClaimType, list[dict[str, Any]]]],
     ) -> list[Conflict]:
         conflicts = []
-        result_by_metric = defaultdict(dict)
+        result_by_metric: dict[str, dict[UUID, Any]] = defaultdict(dict)
 
         for pid, claims_by_type in paper_claims.items():
             result_claims = claims_by_type.get(ClaimType.RESULTS, [])
             for claim in result_claims:
                 normalized = claim.get("normalized_value", {})
                 metric_results = normalized.get("metric_results", {})
-                for metric, result in metric_results.items():
+                if not isinstance(metric_results, dict):
+                    continue
+                for metric, result in self._flatten_metric_results(metric_results).items():
                     result_by_metric[metric][pid] = result
 
         for metric, results_by_paper in result_by_metric.items():
             if len(results_by_paper) > 1:
-                numeric_results = {}
+                numeric_results: dict[UUID, float] = {}
                 for pid, result in results_by_paper.items():
-                    try:
-                        if isinstance(result, dict):
-                            val = result.get("value")
-                        else:
-                            val = result
-                        if val is not None:
-                            numeric_results[pid] = float(val)
-                    except (ValueError, TypeError):
-                        pass
+                    val = self._extract_numeric(result)
+                    if val is not None:
+                        numeric_results[pid] = val
 
                 if len(numeric_results) > 1:
                     values = list(numeric_results.values())
                     if max(values) - min(values) > 0.1:
-                        conflicts.append(Conflict(
-                            conflict_id=uuid.uuid4(),
-                            conflict_type=ConflictType.CONFLICTING_RESULTS,
-                            paper_ids=list(numeric_results.keys()),
-                            description=f"Significantly different results for metric '{metric}'",
-                            details={"results": numeric_results, "range": max(values) - min(values)},
-                            severity="high",
-                        ))
+                        conflicts.append(
+                            Conflict(
+                                conflict_id=uuid.uuid4(),
+                                conflict_type=ConflictType.CONFLICTING_RESULTS,
+                                paper_ids=list(numeric_results.keys()),
+                                description=f"Significantly different results for metric '{metric}'",
+                                details={
+                                    "results": numeric_results,
+                                    "range": max(values) - min(values),
+                                },
+                                severity="high",
+                            )
+                        )
 
         return conflicts
 
@@ -514,7 +624,7 @@ class ComparisonService:
 
         papers = list(model_configs.keys())
         for i, pid1 in enumerate(papers):
-            for pid2 in papers[i+1:]:
+            for pid2 in papers[i + 1 :]:
                 config1 = model_configs[pid1]
                 config2 = model_configs[pid2]
                 if config1.get("name") and config2.get("name"):
@@ -522,14 +632,19 @@ class ComparisonService:
                     norm2 = self.normalizer.normalize_model(config2["name"])
                     if norm1.normalized_value == norm2.normalized_value:
                         if config1.get("framework") != config2.get("framework"):
-                            conflicts.append(Conflict(
-                                conflict_id=uuid.uuid4(),
-                                conflict_type=ConflictType.INCONSISTENT_MODEL_CONFIG,
-                                paper_ids=[pid1, pid2],
-                                description=f"Same model '{norm1.normalized_value}' with different frameworks",
-                                details={"framework1": config1.get("framework"), "framework2": config2.get("framework")},
-                                severity="medium",
-                            ))
+                            conflicts.append(
+                                Conflict(
+                                    conflict_id=uuid.uuid4(),
+                                    conflict_type=ConflictType.INCONSISTENT_MODEL_CONFIG,
+                                    paper_ids=[pid1, pid2],
+                                    description=f"Same model '{norm1.normalized_value}' with different frameworks",
+                                    details={
+                                        "framework1": config1.get("framework"),
+                                        "framework2": config2.get("framework"),
+                                    },
+                                    severity="medium",
+                                )
+                            )
 
         return conflicts
 

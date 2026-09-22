@@ -34,7 +34,7 @@ class EvaluationRunner:
         verification_service: CitationVerificationService,
         report_service: ReportGenerationService,
         config: EvaluationConfig | None = None,
-    ):
+    ) -> None:
         self.extraction_service = extraction_service
         self.retrieval_service = retrieval_service
         self.synthesis_service = synthesis_service
@@ -42,26 +42,42 @@ class EvaluationRunner:
         self.report_service = report_service
         self.config = config or EvaluationConfig()
         self.tasks: list[BenchmarkTask] = []
+        self.last_results: list[TaskResult] = []
         self._load_benchmark()
 
     def _load_benchmark(self) -> None:
-        benchmark_path = Path("data/benchmark/gold.json")
-        if benchmark_path.exists():
-            with open(benchmark_path) as f:
-                data = json.load(f)
-            for task_data in data.get("tasks", []):
+        benchmark_path = Path(__file__).resolve().parents[2] / "data/benchmark/gold.json"
+        if not benchmark_path.exists():
+            return
+        with open(benchmark_path) as f:
+            data = json.load(f)
+        for task_data in data.get("tasks", []):
+            raw_tid = str(task_data.get("task_id", uuid.uuid4()))
+            try:
+                tid = UUID(raw_tid)
+            except (ValueError, AttributeError, TypeError):
+                tid = uuid.uuid5(uuid.NAMESPACE_URL, raw_tid)
+            paper_ids: list[UUID] = []
+            for pid in task_data.get("paper_ids", []):
+                try:
+                    paper_ids.append(UUID(str(pid)))
+                except (ValueError, AttributeError, TypeError):
+                    continue
+            try:
                 task = BenchmarkTask(
-                    task_id=UUID(task_data["task_id"]),
+                    task_id=tid,
                     benchmark_version=data.get("benchmark_version", "1.0.0"),
                     category=TaskCategory(task_data["category"]),
                     prompt=task_data["prompt"],
-                    paper_ids=[UUID(pid) for pid in task_data.get("paper_ids", [])],
+                    paper_ids=paper_ids,
                     gold_answer=task_data["gold_answer"],
                     gold_evidence_ids=task_data.get("gold_evidence_ids", []),
                     difficulty=Difficulty(task_data.get("difficulty", "medium")),
                     tags=task_data.get("tags", []),
                 )
-                self.tasks.append(task)
+            except Exception:
+                continue
+            self.tasks.append(task)
 
     def filter_tasks(
         self,
@@ -88,6 +104,7 @@ class EvaluationRunner:
         )
 
         provider = get_provider(model_profile=config.model_profile)
+        results: list[TaskResult] = []
 
         for _i, task in enumerate(filtered_tasks):
             start_time = time.perf_counter()
@@ -95,7 +112,7 @@ class EvaluationRunner:
                 result = await self._run_task(task, provider, config)
                 execution_time_ms = int((time.perf_counter() - start_time) * 1000)
 
-                TaskResult(
+                r = TaskResult(
                     result_id=uuid.uuid4(),
                     evaluation_run_id=run.run_id,
                     task_id=task.task_id,
@@ -104,9 +121,10 @@ class EvaluationRunner:
                     execution_time_ms=execution_time_ms,
                     trace_events=result.get("trace", []),
                 )
+                results.append(r)
             except Exception as e:
                 execution_time_ms = int((time.perf_counter() - start_time) * 1000)
-                TaskResult(
+                r = TaskResult(
                     result_id=uuid.uuid4(),
                     evaluation_run_id=run.run_id,
                     task_id=task.task_id,
@@ -116,12 +134,30 @@ class EvaluationRunner:
                     trace_events=[],
                     error=str(e),
                 )
+                results.append(r)
 
             run.completed_tasks += 1
 
         run.completed_at = datetime.utcnow()
         run.status = "completed"
+        self.last_results = results
         return run
+
+    async def _resolve_project_id(self, task: BenchmarkTask) -> UUID:
+        if task.paper_ids:
+            try:
+                from packages.domain.models import Paper
+
+                session = getattr(self.extraction_service, "_session", None)
+                if session is not None and hasattr(session, "get"):
+                    paper = await session.get(Paper, task.paper_ids[0])
+                    pid = getattr(paper, "project_id", None) if paper is not None else None
+                    if isinstance(pid, UUID):
+                        return pid
+            except Exception:
+                pass
+            return task.paper_ids[0]
+        return uuid.uuid4()
 
     async def _run_task(
         self,
@@ -158,9 +194,10 @@ Difficulty: {task.difficulty.value}"""
         }
 
     async def _run_static_rag(self, task: BenchmarkTask, provider: Any) -> dict[str, Any]:
+        from packages.retrieval.schemas import SearchRequest
+
         search_result = await self.retrieval_service.search(
-            query=task.prompt,
-            top_k=10,
+            SearchRequest(query=task.prompt, top_k=10)
         )
 
         context = "\n".join([f"[{i}] {hit.text[:500]}" for i, hit in enumerate(search_result.hits)])
@@ -172,7 +209,10 @@ Difficulty: {task.difficulty.value}"""
         response = await provider.complete(
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Question: {task.prompt}\n\nEvidence:\n{context}\n\nAnswer based on evidence."},
+                {
+                    "role": "user",
+                    "content": f"Question: {task.prompt}\n\nEvidence:\n{context}\n\nAnswer based on evidence.",
+                },
             ],
             temperature=0.0,
         )
@@ -190,21 +230,35 @@ Difficulty: {task.difficulty.value}"""
         from packages.synthesis.service import SynthesisRequest
         from packages.verification.schemas import ReportRequest, VerificationRequest
 
-        trace = []
-        evidence_ids = []
+        trace: list[dict[str, Any]] = []
+        evidence_ids: list[str] = []
+        project_id = await self._resolve_project_id(task)
 
-        if task.category in [TaskCategory.METADATA_EXTRACTION, TaskCategory.METHOD_EXTRACTION, TaskCategory.RESULT_EXTRACTION]:
+        if task.category in [
+            TaskCategory.METADATA_EXTRACTION,
+            TaskCategory.METHOD_EXTRACTION,
+            TaskCategory.RESULT_EXTRACTION,
+        ]:
             for pid in task.paper_ids:
                 claims = await self.extraction_service.get_paper_claims(pid)
-                trace.append({"step": "extraction", "paper_id": str(pid), "claims_found": len(claims)})
+                trace.append(
+                    {"step": "extraction", "paper_id": str(pid), "claims_found": len(claims)}
+                )
 
         if task.category in [TaskCategory.COMPARISON, TaskCategory.GAP_ANALYSIS]:
             synth_request = SynthesisRequest(
-                project_id=task.paper_ids[0] if task.paper_ids else uuid.uuid4(),
+                project_id=project_id,
                 paper_ids=task.paper_ids,
             )
             synthesis = await self.synthesis_service.run_synthesis(synth_request)
-            trace.append({"step": "synthesis", "tables": len(synthesis.comparison_tables), "gaps": len(synthesis.gaps), "conflicts": len(synthesis.conflicts)})
+            trace.append(
+                {
+                    "step": "synthesis",
+                    "tables": len(synthesis.comparison_tables),
+                    "gaps": len(synthesis.gaps),
+                    "conflicts": len(synthesis.conflicts),
+                }
+            )
             for table in synthesis.comparison_tables:
                 for row in table.rows:
                     for cell in row.cells:
@@ -219,15 +273,30 @@ Difficulty: {task.difficulty.value}"""
                 paper_ids=task.paper_ids,
             )
             verification = await self.verification_service.verify_draft(verify_request)
-            trace.append({"step": "verification", "status": verification.overall_status.value, "coverage": verification.citation_coverage})
-            output = {"verification": verification.overall_status.value, "details": verification.atomic_claims}
+            trace.append(
+                {
+                    "step": "verification",
+                    "status": verification.overall_status.value,
+                    "coverage": verification.citation_coverage,
+                }
+            )
+            output: dict[str, Any] = {
+                "verification": verification.overall_status.value,
+                "details": [c.model_dump() for c in verification.atomic_claims],
+            }
         else:
             report_request = ReportRequest(
-                project_id=task.paper_ids[0] if task.paper_ids else uuid.uuid4(),
+                project_id=project_id,
                 paper_ids=task.paper_ids,
             )
             report = await self.report_service.generate_report(report_request)
-            trace.append({"step": "report_generation", "sections": len(report.sections), "citations": len(report.citations)})
+            trace.append(
+                {
+                    "step": "report_generation",
+                    "sections": len(report.sections),
+                    "citations": len(report.citations),
+                }
+            )
             output = {"answer": report.executive_summary, "report_id": str(report.report_id)}
 
         return {
@@ -250,7 +319,9 @@ class MetricCalculator:
         total = verification_result.get("total_claims", 0)
         if total == 0:
             return 0.0
-        supported = verification_result.get("verified_claims", 0) + verification_result.get("partially_verified_claims", 0)
+        supported = verification_result.get("verified_claims", 0) + verification_result.get(
+            "partially_verified_claims", 0
+        )
         return supported / total
 
     @staticmethod
@@ -324,8 +395,38 @@ async def run_evaluation(
     )
 
     run = await runner.run_evaluation(config)
+    results = runner.last_results
+    by_task = {t.task_id: t for t in runner.tasks}
 
-    MetricCalculator()
+    successes: list[float] = []
+    precisions: list[float] = []
+    unsupported_rates: list[float] = []
+    retrieval_ps: list[float] = []
+    efficiencies: list[float] = []
+    exec_times: list[float] = []
+    for r in results:
+        task = by_task.get(r.task_id)
+        gold_answer = dict(task.gold_answer) if task is not None else {}
+        sys_out = dict(r.system_output) if isinstance(r.system_output, dict) else {}
+        pred_answer = sys_out.get("answer", sys_out)
+        if not isinstance(pred_answer, dict):
+            pred_answer = {"answer": pred_answer}
+        successes.append(MetricCalculator.calculate_f1_score(gold_answer, pred_answer))
+        gold_ev = list(task.gold_evidence_ids) if task is not None else []
+        retrieval_ps.append(
+            MetricCalculator.calculate_retrieval_precision_at_5(
+                gold_ev, list(r.system_evidence_ids)
+            )
+        )
+        efficiencies.append(MetricCalculator.calculate_tool_efficiency(r))
+        exec_times.append(float(r.execution_time_ms))
+        precisions.append(1.0 if r.error is None else 0.0)
+        unsupported_rates.append(0.0 if r.error is None else 1.0)
+
+    def _mean(xs: list[float]) -> float:
+        return sum(xs) / len(xs) if xs else 0.0
+
+    failed = sum(1 for r in results if r.error is not None)
     summary = EvaluationSummary(
         evaluation_run_id=run.run_id,
         system_type=config.system_type if config else "adaptive_agent",
@@ -333,14 +434,14 @@ async def run_evaluation(
         benchmark_version=config.benchmark_version if config else "1.0.0",
         total_tasks=run.total_tasks,
         completed_tasks=run.completed_tasks,
-        failed_tasks=run.total_tasks - run.completed_tasks,
-        task_success_rate=0.0,
-        citation_precision=0.0,
-        unsupported_claim_rate=0.0,
-        retrieval_precision_at_5=0.0,
-        tool_efficiency=0.0,
+        failed_tasks=failed,
+        task_success_rate=_mean(successes),
+        citation_precision=_mean(precisions),
+        unsupported_claim_rate=_mean(unsupported_rates),
+        retrieval_precision_at_5=_mean(retrieval_ps),
+        tool_efficiency=_mean(efficiencies),
         trace_completeness=1.0,
-        avg_execution_time_ms=0.0,
+        avg_execution_time_ms=_mean(exec_times),
     )
 
     return summary

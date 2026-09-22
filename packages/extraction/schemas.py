@@ -132,11 +132,12 @@ class ClaimExtractionResponse(BaseModel):
     confidence: float
     status: ClaimStatus
     evidence_ids: list[str] = []
+    paper_title: str | None = None
 
 
 class EvidenceLinkRequest(BaseModel):
     claim_id: UUID
-    chunk_id: UUID
+    chunk_id: UUID | str
     page_number: int
     support_type: SupportType = SupportType.SUPPORTS
     match_score: float = 0.0

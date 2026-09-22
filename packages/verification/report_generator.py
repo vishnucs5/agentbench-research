@@ -11,6 +11,7 @@ from packages.verification.schemas import (
     ReportRequest,
     ReportResponse,
     ReportSection,
+    VerificationRequest,
 )
 from packages.verification.verifier import CitationVerificationService
 
@@ -28,13 +29,19 @@ class ReportGenerationService:
 
     async def generate_report(self, request: ReportRequest) -> ReportResponse:
         synthesis = None
-        if request.synthesis_id:
+        if request.synthesis_id is not None or request.paper_ids:
             from packages.synthesis.schemas import SynthesisRequest
+
             synth_request = SynthesisRequest(
                 project_id=request.project_id,
                 paper_ids=request.paper_ids,
             )
             synthesis = await self.synthesis_service.run_synthesis(synth_request)
+            if request.synthesis_id is not None:
+                try:
+                    object.__setattr__(synthesis, "synthesis_id", request.synthesis_id)
+                except Exception:
+                    pass
 
         sections = []
         citations = []
@@ -80,18 +87,18 @@ class ReportGenerationService:
                 )
                 sections.append(unc_section)
 
-        bibliography = self._build_bibliography(request.paper_ids)
+        bibliography = await self._build_bibliography(request.paper_ids)
         for entry in bibliography:
             citations.append(entry.formatted_citation)
 
         draft_text = "\n\n".join(f"## {s.title}\n\n{s.content}" for s in sections)
 
-        verification_request = type("VerificationRequest", (), {
-            "draft_text": draft_text,
-            "evidence_ids": list(set(all_evidence_ids)),
-            "paper_ids": request.paper_ids,
-            "strict_mode": False,
-        })()
+        verification_request = VerificationRequest(
+            draft_text=draft_text if draft_text.strip() else "Empty report.",
+            evidence_ids=list(set(all_evidence_ids)),
+            paper_ids=request.paper_ids,
+            strict_mode=False,
+        )
         verification_result = await self.verification_service.verify_draft(verification_request)
 
         return ReportResponse(
@@ -117,7 +124,11 @@ class ReportGenerationService:
             lines.append("")
             for cell in row.cells:
                 val = cell.value.value if cell.value.value else "Not reported"
-                conf = f" (confidence: {cell.value.confidence:.0%})" if cell.value.confidence > 0 else ""
+                conf = (
+                    f" (confidence: {cell.value.confidence:.0%})"
+                    if cell.value.confidence > 0
+                    else ""
+                )
                 lines.append(f"- **{cell.paper_title}**: {val}{conf}")
                 if cell.evidence_ids:
                     lines.append(f"  *Evidence: {', '.join(cell.evidence_ids)}*")
@@ -129,7 +140,9 @@ class ReportGenerationService:
             section_id=f"comparison_{table.comparison_type.value}",
             title=f"{table.comparison_type.value.title()} Comparison",
             content="\n".join(lines),
-            evidence_ids=[eid for row in table.rows for cell in row.cells for eid in cell.evidence_ids],
+            evidence_ids=[
+                eid for row in table.rows for cell in row.cells for eid in cell.evidence_ids
+            ],
         )
 
     def _build_gaps_section(self, gaps) -> ReportSection:
@@ -198,7 +211,9 @@ class ReportGenerationService:
 
         if synthesis:
             for table in synthesis.comparison_tables:
-                lines.append(f"- **{table.comparison_type.value.title()}**: Compared across {len(table.paper_ids)} papers")
+                lines.append(
+                    f"- **{table.comparison_type.value.title()}**: Compared across {len(table.paper_ids)} papers"
+                )
 
         if synthesis and synthesis.gaps:
             lines.append(f"- **Research Gaps**: {len(synthesis.gaps)} gaps identified")
@@ -206,7 +221,9 @@ class ReportGenerationService:
             lines.append(f"- **Conflicts**: {len(synthesis.conflicts)} inconsistencies found")
 
         lines.extend(["", "## Methodology", ""])
-        lines.append("This analysis uses automated structured extraction, hybrid retrieval, and citation verification.")
+        lines.append(
+            "This analysis uses automated structured extraction, hybrid retrieval, and citation verification."
+        )
         lines.append("All claims are verified against source evidence with page-level citations.")
 
         return "\n".join(lines)
@@ -239,33 +256,70 @@ class ReportGenerationService:
 
         return "\n".join(lines)
 
-    def _build_bibliography(self, paper_ids: list[UUID]) -> list[BibliographyEntry]:
-        entries = []
-        for pid in paper_ids:
-            claims = self.extraction_service.get_paper_claims(pid)
-            if not claims:
-                continue
-            claim = claims[0]
-            normalized = getattr(claim, "normalized_value", {})
-            title = normalized.get("title", "Unknown Title")
-            authors = normalized.get("authors", [])
-            year = normalized.get("year")
-            doi = normalized.get("doi")
+    async def _build_bibliography(self, paper_ids: list[UUID]) -> list[BibliographyEntry]:
+        from packages.domain.models import Paper
 
-            author_str = ", ".join([a.get("name", "") for a in authors]) if authors else "Unknown"
+        entries: list[BibliographyEntry] = []
+        for pid in paper_ids:
+            claims = await self.extraction_service.get_paper_claims(pid)
+            paper = None
+            try:
+                session = getattr(self.extraction_service, "_session", None)
+                if session is not None and hasattr(session, "get"):
+                    paper = await session.get(Paper, pid)
+            except Exception:
+                paper = None
+            if paper is not None:
+                raw_title = getattr(paper, "title", None)
+                title = raw_title if isinstance(raw_title, str) and raw_title else "Unknown Title"
+                raw_authors = getattr(paper, "authors_json", []) or []
+                authors: list[str] = []
+                for a in raw_authors:
+                    if isinstance(a, dict):
+                        authors.append(str(a.get("name", "")))
+                    elif isinstance(a, str):
+                        authors.append(a)
+                raw_year = getattr(paper, "year", None)
+                year = int(raw_year) if isinstance(raw_year, int) else None
+                raw_doi = getattr(paper, "doi", None)
+                doi = str(raw_doi) if isinstance(raw_doi, str) else None
+            else:
+                if not claims:
+                    continue
+                claim = claims[0]
+                normalized = getattr(claim, "normalized_value", {}) or {}
+                if not isinstance(normalized, dict):
+                    normalized = {}
+                title = str(normalized.get("title", "Unknown Title"))
+                raw_authors = normalized.get("authors", [])
+                authors = []
+                if isinstance(raw_authors, list):
+                    for a in raw_authors:
+                        if isinstance(a, dict):
+                            authors.append(str(a.get("name", "")))
+                        elif isinstance(a, str):
+                            authors.append(a)
+                year = normalized.get("year")
+                year = int(year) if isinstance(year, int) else None
+                doi = normalized.get("doi")
+                doi = str(doi) if isinstance(doi, str) else None
+
+            author_str = ", ".join(authors) if authors else "Unknown"
             formatted = f"{author_str} ({year}). {title}."
             if doi:
                 formatted += f" DOI: {doi}"
 
-            entries.append(BibliographyEntry(
-                entry_id=str(uuid.uuid4()),
-                paper_id=pid,
-                formatted_citation=formatted,
-                paper_title=title,
-                authors=[a.get("name", "") for a in authors] if authors else [],
-                year=year,
-                doi=doi,
-            ))
+            entries.append(
+                BibliographyEntry(
+                    entry_id=str(uuid.uuid4()),
+                    paper_id=pid,
+                    formatted_citation=formatted,
+                    paper_title=title,
+                    authors=authors,
+                    year=year,
+                    doi=doi,
+                )
+            )
 
         return entries
 
@@ -273,7 +327,11 @@ class ReportGenerationService:
 _report_generation_service: Any | None = None
 
 
-def get_report_generation_service(extraction_service, synthesis_service, verification_service):
+def get_report_generation_service(
+    extraction_service: Any,
+    synthesis_service: Any,
+    verification_service: Any,
+) -> ReportGenerationService:
     global _report_generation_service
     if _report_generation_service is None:
         _report_generation_service = ReportGenerationService(

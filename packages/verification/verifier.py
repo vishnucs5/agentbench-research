@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from typing import Any
 
 from packages.agent.factory import get_provider
 from packages.extraction.service import ExtractionService
@@ -21,10 +22,16 @@ class CitationVerificationService:
         self,
         extraction_service: ExtractionService,
         retrieval_service: RetrievalService,
+        provider_name: str | None = None,
     ):
         self.extraction_service = extraction_service
         self.retrieval_service = retrieval_service
-        self.provider = get_provider("mock")
+        try:
+            self.provider = get_provider(provider_name)
+        except Exception:
+            from packages.agent.mock_provider import MockProvider
+
+            self.provider = MockProvider()
 
     def split_into_atomic_claims(self, text: str) -> list[str]:
         sentences = re.split(r"(?<=[.!?])\s+", text.strip())
@@ -37,9 +44,20 @@ class CitationVerificationService:
 
     def classify_claim_type(self, claim: str) -> str:
         opinion_markers = [
-            "i think", "i believe", "in my opinion", "it seems", "appears to",
-            "suggests that", "may indicate", "could be", "likely", "probably",
-            "should", "would be better", "recommend", "propose"
+            "i think",
+            "i believe",
+            "in my opinion",
+            "it seems",
+            "appears to",
+            "suggests that",
+            "may indicate",
+            "could be",
+            "likely",
+            "probably",
+            "should",
+            "would be better",
+            "recommend",
+            "propose",
         ]
         claim_lower = claim.lower()
         for marker in opinion_markers:
@@ -98,49 +116,72 @@ Verify this claim against the evidence."""
                 max_tokens=1000,
             )
             result = json.loads(response.content)
+            status = AtomicClaimStatus(result.get("status", "unsupported"))
+            confidence = result.get("confidence", 0.0)
+            supporting = result.get("supporting_evidence", [])
+            contradicting = result.get("contradicting_evidence", [])
+            rationale = result.get("rationale", "")
+        except (ValueError, KeyError) as e:
+            status = AtomicClaimStatus.UNSUPPORTED
+            confidence = 0.0
+            supporting = []
+            contradicting = []
+            rationale = f"Verification failed: {str(e)}"
         except Exception as e:
-            result = {
-                "status": "unsupported",
-                "confidence": 0.0,
-                "supporting_evidence": [],
-                "contradicting_evidence": [],
-                "rationale": f"Verification failed: {str(e)}",
-            }
+            status = AtomicClaimStatus.UNSUPPORTED
+            confidence = 0.0
+            supporting = []
+            contradicting = []
+            rationale = f"Verification failed: {str(e)}"
 
-        status = AtomicClaimStatus(result.get("status", "unsupported"))
-        confidence = result.get("confidence", 0.0)
-        supporting = result.get("supporting_evidence", [])
-        contradicting = result.get("contradicting_evidence", [])
-        rationale = result.get("rationale", "")
+        def _pick(indices: object) -> list[str]:
+            picked: list[str] = []
+            if not isinstance(indices, list):
+                return picked
+            for i in indices:
+                if isinstance(i, bool):
+                    continue
+                if isinstance(i, int) and 0 <= i < len(evidence_texts):
+                    picked.append(evidence_texts[i])
+            return picked
 
         return AtomicClaim(
             claim_id=claim_id,
             claim_text=claim,
             claim_type=claim_type,
             status=status,
-            supporting_evidence=[evidence_texts[i] for i in supporting if i < len(evidence_texts)],
-            contradicting_evidence=[evidence_texts[i] for i in contradicting if i < len(evidence_texts)],
-            confidence=confidence,
-            rationale=rationale,
+            supporting_evidence=_pick(supporting),
+            contradicting_evidence=_pick(contradicting),
+            confidence=float(confidence) if isinstance(confidence, (int, float)) else 0.0,
+            rationale=str(rationale) if rationale is not None else "",
         )
 
     async def verify_draft(self, request: VerificationRequest) -> VerificationResult:
         atomic_claims_text = self.split_into_atomic_claims(request.draft_text)
-        evidence_texts = []
-
-        if request.evidence_ids:
-            for eid in request.evidence_ids:
-                evidence_texts.append(f"Evidence {eid}: [retrieved text]")
+        evidence_texts = await self._resolve_evidence_texts(request)
 
         atomic_claims = []
         for claim_text in atomic_claims_text:
             claim_result = await self.verify_claim_against_evidence(
                 claim_text, evidence_texts, request.strict_mode
             )
+            if request.strict_mode and claim_result.status == AtomicClaimStatus.PARTIALLY_VERIFIED:
+                claim_result = AtomicClaim(
+                    claim_id=claim_result.claim_id,
+                    claim_text=claim_result.claim_text,
+                    claim_type=claim_result.claim_type,
+                    status=AtomicClaimStatus.UNSUPPORTED,
+                    supporting_evidence=[],
+                    contradicting_evidence=claim_result.contradicting_evidence,
+                    confidence=claim_result.confidence,
+                    rationale=(claim_result.rationale or "") + " [strict_mode]",
+                )
             atomic_claims.append(claim_result)
 
         verified = sum(1 for c in atomic_claims if c.status == AtomicClaimStatus.VERIFIED)
-        partially = sum(1 for c in atomic_claims if c.status == AtomicClaimStatus.PARTIALLY_VERIFIED)
+        partially = sum(
+            1 for c in atomic_claims if c.status == AtomicClaimStatus.PARTIALLY_VERIFIED
+        )
         unsupported = sum(1 for c in atomic_claims if c.status == AtomicClaimStatus.UNSUPPORTED)
         opinion = sum(1 for c in atomic_claims if c.status == AtomicClaimStatus.OPINION)
         contradicted = sum(1 for c in atomic_claims if c.status == AtomicClaimStatus.CONTRADICTED)
@@ -148,7 +189,9 @@ Verify this claim against the evidence."""
         total = len(atomic_claims)
         citation_coverage = (verified + partially) / total if total > 0 else 0.0
 
-        if unsupported + contradicted > 0:
+        if total == 0:
+            overall = VerificationStatus.NOT_REPORTED
+        elif unsupported + contradicted > 0:
             overall = VerificationStatus.UNSUPPORTED
         elif partially > 0:
             overall = VerificationStatus.PARTIALLY_SUPPORTED
@@ -157,7 +200,11 @@ Verify this claim against the evidence."""
         else:
             overall = VerificationStatus.SUPPORTED
 
-        unsupported_texts = [c.claim_text for c in atomic_claims if c.status in (AtomicClaimStatus.UNSUPPORTED, AtomicClaimStatus.CONTRADICTED)]
+        unsupported_texts = [
+            c.claim_text
+            for c in atomic_claims
+            if c.status in (AtomicClaimStatus.UNSUPPORTED, AtomicClaimStatus.CONTRADICTED)
+        ]
 
         return VerificationResult(
             overall_status=overall,
@@ -175,12 +222,55 @@ Verify this claim against the evidence."""
             },
         )
 
+    async def _resolve_evidence_texts(self, request: VerificationRequest) -> list[str]:
+        if request.evidence_ids:
+            resolved: list[str] = []
+            hit_by_id: dict[str, str] = {}
+            try:
+                from packages.retrieval.schemas import SearchRequest
+
+                search_resp = await self.retrieval_service.search(
+                    SearchRequest(query=request.draft_text[:1000], top_k=10)
+                )
+                for h in search_resp.hits:
+                    hit_by_id[str(h.evidence_id)] = h.text
+            except Exception:
+                hit_by_id = {}
+            for eid in request.evidence_ids:
+                if eid in hit_by_id:
+                    resolved.append(hit_by_id[eid])
+                else:
+                    resolved.append(f"Evidence {eid}: [retrieved text]")
+            return resolved
+        if request.paper_ids:
+            try:
+                from packages.retrieval.schemas import SearchRequest
+
+                search_resp = await self.retrieval_service.search(
+                    SearchRequest(
+                        query=request.draft_text[:1000],
+                        paper_ids=request.paper_ids,
+                        top_k=10,
+                    )
+                )
+                if search_resp.hits:
+                    return [h.text for h in search_resp.hits]
+            except Exception:
+                pass
+        return []
+
 
 _verification_service: CitationVerificationService | None = None
 
 
-def get_citation_verification_service(extraction_service, retrieval_service):
+def get_citation_verification_service(
+    extraction_service: Any,
+    retrieval_service: Any,
+    provider_name: str | None = None,
+) -> CitationVerificationService:
     global _verification_service
     if _verification_service is None:
-        _verification_service = CitationVerificationService(extraction_service, retrieval_service)
+        _verification_service = CitationVerificationService(
+            extraction_service, retrieval_service, provider_name
+        )
     return _verification_service

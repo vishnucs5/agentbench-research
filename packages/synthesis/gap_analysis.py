@@ -39,12 +39,14 @@ class GapAnalysisService:
                 normalized = claim.get("normalized_value", {})
                 lim_text = normalized.get("limitation_text", "")
                 if lim_text:
-                    limitation_texts.append({
-                        "text": lim_text,
-                        "paper_id": pid,
-                        "claim_id": claim.get("claim_id"),
-                        "evidence_ids": claim.get("evidence_ids", []),
-                    })
+                    limitation_texts.append(
+                        {
+                            "text": lim_text,
+                            "paper_id": pid,
+                            "claim_id": claim.get("claim_id"),
+                            "evidence_ids": claim.get("evidence_ids", []),
+                        }
+                    )
 
         if not limitation_texts:
             return gaps
@@ -57,18 +59,23 @@ class GapAnalysisService:
         word_counts = Counter(words)
         repeated_words = {w: c for w, c in word_counts.items() if c >= self.min_frequency}
 
-        for word, count in repeated_words.items():
-            if count >= self.min_frequency:
-                related = [lt for lt in limitation_texts if word in lt["text"].lower()]
-                gaps.append(Gap(
+        for word in sorted(repeated_words.keys()):
+            related = [lt for lt in limitation_texts if word in lt["text"].lower()]
+            paper_ids = sorted({lt["paper_id"] for lt in related}, key=str)
+            frequency = len(paper_ids)
+            if frequency < self.min_frequency:
+                continue
+            gaps.append(
+                Gap(
                     gap_id=uuid.uuid4(),
                     gap_type=GapType.REPEATED_LIMITATION,
-                    paper_ids=[lt["paper_id"] for lt in related],
+                    paper_ids=list(paper_ids),
                     description=f"Repeated limitation across papers: '{word}'",
                     evidence_ids=[eid for lt in related for eid in lt["evidence_ids"]],
-                    frequency=count,
-                    severity="high" if count >= 3 else "medium",
-                ))
+                    frequency=frequency,
+                    severity="high" if frequency >= 3 else "medium",
+                )
+            )
 
         return gaps
 
@@ -76,8 +83,10 @@ class GapAnalysisService:
         self,
         paper_claims: dict[UUID, dict[ClaimType, list[dict[str, Any]]]],
     ) -> list[Gap]:
-        gaps = []
-        all_metrics = set()
+        from packages.synthesis.normalization import normalize_metric_name
+
+        gaps: list[Gap] = []
+        all_metrics: set[str] = set()
 
         for _pid, claims_by_type in paper_claims.items():
             metric_claims = claims_by_type.get(ClaimType.METRICS, [])
@@ -87,27 +96,31 @@ class GapAnalysisService:
                 for m in metrics:
                     m_name = m if isinstance(m, str) else m.get("name", "")
                     if m_name:
-                        all_metrics.add(m_name.lower().strip())
+                        all_metrics.add(normalize_metric_name(str(m_name)).normalized_value)
 
         for pid, claims_by_type in paper_claims.items():
             result_claims = claims_by_type.get(ClaimType.RESULTS, [])
-            reported_metrics = set()
+            reported_metrics: set[str] = set()
             for claim in result_claims:
                 normalized = claim.get("normalized_value", {})
                 metric_results = normalized.get("metric_results", {})
+                if not isinstance(metric_results, dict):
+                    continue
                 for m in metric_results:
-                    reported_metrics.add(m.lower().strip())
+                    reported_metrics.add(normalize_metric_name(str(m)).normalized_value)
 
             missing = all_metrics - reported_metrics
             if missing:
-                gaps.append(Gap(
-                    gap_id=uuid.uuid4(),
-                    gap_type=GapType.MISSING_EVALUATION,
-                    paper_ids=[pid],
-                    description=f"Paper does not report results for metrics: {', '.join(sorted(missing))}",
-                    frequency=len(missing),
-                    severity="medium",
-                ))
+                gaps.append(
+                    Gap(
+                        gap_id=uuid.uuid4(),
+                        gap_type=GapType.MISSING_EVALUATION,
+                        paper_ids=[pid],
+                        description=f"Paper does not report results for metrics: {', '.join(sorted(missing))}",
+                        frequency=len(missing),
+                        severity="medium",
+                    )
+                )
 
         return gaps
 
@@ -139,10 +152,16 @@ class GapAnalysisService:
         for _pid, claims_by_type in paper_claims.items():
             model_claims = claims_by_type.get(ClaimType.MODEL, [])
             dataset_claims = claims_by_type.get(ClaimType.DATASET, [])
-            models = {c.get("normalized_value", {}).get("name", "").lower().strip()
-                     for c in model_claims if c.get("normalized_value", {}).get("name")}
-            datasets = {c.get("normalized_value", {}).get("name", "").lower().strip()
-                       for c in dataset_claims if c.get("normalized_value", {}).get("name")}
+            models = {
+                c.get("normalized_value", {}).get("name", "").lower().strip()
+                for c in model_claims
+                if c.get("normalized_value", {}).get("name")
+            }
+            datasets = {
+                c.get("normalized_value", {}).get("name", "").lower().strip()
+                for c in dataset_claims
+                if c.get("normalized_value", {}).get("name")
+            }
             for m in models:
                 for d in datasets:
                     model_dataset_pairs.add((m, d))
@@ -154,14 +173,16 @@ class GapAnalysisService:
                     unexplored.append((model, dataset))
 
         if unexplored:
-            gaps.append(Gap(
-                gap_id=uuid.uuid4(),
-                gap_type=GapType.UNEXPLORED_APPROACH,
-                paper_ids=list(paper_claims.keys()),
-                description=f"Unexplored model-dataset combinations: {len(unexplored)} pairs (e.g., {unexplored[:3]})",
-                frequency=len(unexplored),
-                severity="medium",
-            ))
+            gaps.append(
+                Gap(
+                    gap_id=uuid.uuid4(),
+                    gap_type=GapType.UNEXPLORED_APPROACH,
+                    paper_ids=list(paper_claims.keys()),
+                    description=f"Unexplored model-dataset combinations: {len(unexplored)} pairs (e.g., {unexplored[:3]})",
+                    frequency=len(unexplored),
+                    severity="medium",
+                )
+            )
 
         return gaps
 
@@ -185,24 +206,28 @@ class GapAnalysisService:
         missing_results = all_papers - has_results
 
         for pid in missing_preprocessing:
-            gaps.append(Gap(
-                gap_id=uuid.uuid4(),
-                gap_type=GapType.DATA_GAP,
-                paper_ids=[pid],
-                description="Paper does not report preprocessing steps",
-                frequency=1,
-                severity="medium",
-            ))
+            gaps.append(
+                Gap(
+                    gap_id=uuid.uuid4(),
+                    gap_type=GapType.DATA_GAP,
+                    paper_ids=[pid],
+                    description="Paper does not report preprocessing steps",
+                    frequency=1,
+                    severity="medium",
+                )
+            )
 
         for pid in missing_results:
-            gaps.append(Gap(
-                gap_id=uuid.uuid4(),
-                gap_type=GapType.DATA_GAP,
-                paper_ids=[pid],
-                description="Paper does not report results",
-                frequency=1,
-                severity="high",
-            ))
+            gaps.append(
+                Gap(
+                    gap_id=uuid.uuid4(),
+                    gap_type=GapType.DATA_GAP,
+                    paper_ids=[pid],
+                    description="Paper does not report results",
+                    frequency=1,
+                    severity="high",
+                )
+            )
 
         return gaps
 
