@@ -20,6 +20,7 @@ from packages.security.schemas import (
     TokenRefreshRequest,
     TokenRefreshResponse,
     UserResponse,
+    UserRole,
     get_role_permissions,
 )
 from pydantic import ValidationError
@@ -189,7 +190,7 @@ class AuthService:
             )
 
             access_token = self.create_access_token(payload)
-            _ = self.create_refresh_token(user.id)
+            refresh_token = self.create_refresh_token(user.id)
 
             user.last_login = datetime.now(UTC)
             await session.flush()
@@ -207,9 +208,12 @@ class AuthService:
                 user_id=user.id,
                 email=user.email,
                 role=user.role,
+                refresh_token=refresh_token,
             )
 
-    async def register(self, request: RegisterRequest) -> UserResponse:
+    async def register(
+        self, request: RegisterRequest, requester_role: UserRole | str | None = None
+    ) -> UserResponse:
         from packages.domain.database import get_session
         from packages.domain.models import User
         from sqlalchemy import select
@@ -217,6 +221,22 @@ class AuthService:
         valid, error = self.validate_password_strength(request.password)
         if not valid:
             raise ValueError(error)
+
+        # Privilege fix: only ADMIN can create ADMIN/SUPERVISOR accounts.
+        role = UserRole.RESEARCHER
+        effective_requester: UserRole | None = None
+        if isinstance(requester_role, UserRole):
+            effective_requester = requester_role
+        elif isinstance(requester_role, str):
+            try:
+                effective_requester = UserRole(requester_role)
+            except ValueError:
+                effective_requester = None
+        if (
+            request.role in (UserRole.ADMIN, UserRole.SUPERVISOR)
+            and effective_requester == UserRole.ADMIN
+        ):
+            role = request.role
 
         async with get_session() as session:
             result = await session.execute(select(User).where(User.email == request.email))
@@ -233,7 +253,7 @@ class AuthService:
                 hashed_password=hashed,
                 full_name=request.full_name,
                 display_name=display_name,
-                role=request.role,
+                role=role,
                 is_active=True,
             )
             session.add(user)
@@ -285,12 +305,13 @@ class AuthService:
             )
 
             access_token = self.create_access_token(payload)
-            _ = self.create_refresh_token(user.id)
+            new_refresh_token = self.create_refresh_token(user.id)
             self.revoke_refresh_token(request.refresh_token)
 
             return TokenRefreshResponse(
                 access_token=access_token,
                 expires_in=self.config.access_token_expire_minutes * 60,
+                refresh_token=new_refresh_token,
             )
 
     async def change_password(self, user_id: UUID, request: PasswordChangeRequest) -> bool:

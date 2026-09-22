@@ -89,6 +89,7 @@ class LoginResponse(BaseModel):
     user_id: UUID
     email: str
     role: UserRole
+    refresh_token: str | None = None
 
 
 class RegisterRequest(BaseModel):
@@ -116,6 +117,7 @@ class TokenRefreshResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+    refresh_token: str | None = None
 
 
 class PasswordChangeRequest(BaseModel):

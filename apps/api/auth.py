@@ -77,7 +77,10 @@ async def change_password(
     current_user = Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service),
 ):
-    success = await auth_service.change_password(current_user.id, request)
+    try:
+        success = await auth_service.change_password(current_user.id, request)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if not success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
