@@ -71,5 +71,13 @@ logs/
 *.pem
 *.crt
 
+# env secrets - never commit
+.env
+agentbench.db
+data/papers/*
+data/bm25_index.pkl
+data/benchmark/*.json
+!data/benchmark/.gitkeep
+
 # React build output
 apps/api/static/
