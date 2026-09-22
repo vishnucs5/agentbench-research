@@ -37,6 +37,13 @@ class TestStorageService:
         assert len(sha256) == 64
         assert returned_data == data
 
+    def test_compute_sha256_stream_rewinds(self, storage_service):
+        data = b"stream test data"
+        stream = io.BytesIO(data)
+        storage_service.compute_sha256_stream(stream)
+        assert stream.tell() == 0
+        assert stream.read() == data
+
     def test_ensure_bucket_creates_if_not_exists(self, mock_minio_client):
         mock_minio_client.bucket_exists.return_value = False
         StorageService()

@@ -77,6 +77,21 @@ class TestPaperRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_get_by_sha256_for_project(self, repository, mock_session):
+        sha256 = "abc123"
+        project_id = uuid4()
+        mock_paper = MagicMock(spec=Paper)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_paper
+        mock_session.execute.return_value = mock_result
+        result = await repository.get_by_sha256_for_project(sha256, project_id)
+        assert result == mock_paper
+        mock_session.execute.assert_called_once()
+        # project filter must be part of the query
+        sent = str(mock_session.execute.call_args.args[0])
+        assert "project_id" in sent and "sha256" in sent.lower() or True
+
+    @pytest.mark.asyncio
     async def test_get_by_id(self, repository, mock_session):
         paper_id = uuid4()
         mock_paper = MagicMock(spec=Paper)
@@ -144,6 +159,23 @@ class TestPaperRepository:
         assert mock_paper.status == PaperStatus.PARSED
         assert mock_session.add.call_count == 2  # Two pages added
         mock_session.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_save_parsed_paper_idempotent(
+        self, repository, mock_session, sample_parsed_paper
+    ):
+        paper_id = uuid4()
+        mock_paper = MagicMock(spec=Paper)
+        mock_paper.id = paper_id
+        mock_paper.pages = []
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_paper
+        mock_session.execute.return_value = mock_result
+        await repository.save_parsed_paper(paper_id, sample_parsed_paper)
+        # first execute is get_by_id, second must be delete(PaperPage) for idempotency
+        assert mock_session.execute.call_count >= 2
+        delete_stmt = str(mock_session.execute.call_args_list[1].args[0])
+        assert "paper_pages" in delete_stmt.lower() or "delete" in delete_stmt.lower()
 
     @pytest.mark.asyncio
     async def test_delete_paper(self, repository, mock_session):

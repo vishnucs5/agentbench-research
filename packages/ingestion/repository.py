@@ -5,7 +5,7 @@ from uuid import UUID
 
 from packages.domain.models import Paper, PaperPage, PaperStatus
 from packages.ingestion.schemas import ParsedPaper
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -46,6 +46,12 @@ class PaperRepository:
     async def get_by_sha256(self, sha256: str) -> Paper | None:
         result = await self._session.execute(
             select(Paper).where(Paper.sha256 == sha256)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_sha256_for_project(self, sha256: str, project_id: UUID) -> Paper | None:
+        result = await self._session.execute(
+            select(Paper).where(Paper.sha256 == sha256, Paper.project_id == project_id)
         )
         return result.scalar_one_or_none()
 
@@ -104,6 +110,9 @@ class PaperRepository:
         paper.year = parsed.metadata.year or paper.year
         paper.parser_version = parsed.parser_version
         paper.status = PaperStatus.PARSED
+
+        # delete existing pages first to avoid uq_paper_page_number IntegrityError
+        await self._session.execute(delete(PaperPage).where(PaperPage.paper_id == paper_id))
 
         for page_data in parsed.pages:
             page = PaperPage(

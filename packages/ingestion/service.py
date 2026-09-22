@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from packages.domain.models import PaperStatus
@@ -14,6 +16,9 @@ from packages.ingestion.schemas import (
 )
 from packages.ingestion.storage import StorageService, get_storage_service
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from packages.domain.config import Settings
 
 
 class IngestionService:
@@ -37,7 +42,7 @@ class IngestionService:
         content_type: str,
         request: PaperIngestRequest,
     ) -> tuple[UUID, str]:
-        if content_type != "application/pdf":
+        if content_type.lower().split(";")[0].strip() != "application/pdf":
             raise ValueError(f"Unsupported content type: {content_type}")
 
         settings = self._get_settings()
@@ -47,25 +52,31 @@ class IngestionService:
 
         sha256 = self._storage.compute_sha256(file_data)
 
-        existing = await self._repo.get_by_sha256(sha256)
+        existing = await self._repo.get_by_sha256_for_project(sha256, project_id)
         if existing:
             return existing.id, "duplicate"
 
         storage_key = f"{project_id}/{sha256}.pdf"
-        self._storage.upload_file(storage_key, file_data, content_type)
-
-        paper = await self._repo.create_paper(
-            project_id=project_id,
-            title=request.title,
-            authors=request.authors or [],
-            year=request.year,
-            source_url=str(request.source_url) if request.source_url else None,
-            doi=request.doi,
-            sha256=sha256,
-            storage_key=storage_key,
-            parser_version=self._parser.parser_version,
-            status=PaperStatus.UPLOADED,
-        )
+        try:
+            self._storage.upload_file(storage_key, file_data, content_type)
+            paper = await self._repo.create_paper(
+                project_id=project_id,
+                title=request.title,
+                authors=[{"name": a} for a in (request.authors or [])],
+                year=request.year,
+                source_url=str(request.source_url) if request.source_url else None,
+                doi=request.doi,
+                sha256=sha256,
+                storage_key=storage_key,
+                parser_version=self._parser.parser_version,
+                status=PaperStatus.UPLOADED,
+            )
+        except Exception:
+            try:
+                self._storage.delete_file(storage_key)
+            except Exception:
+                pass
+            raise
 
         job_id = uuid.uuid4()
         self._jobs[job_id] = IngestionJobStatus(
@@ -74,7 +85,7 @@ class IngestionService:
             status="queued",
             progress=0.0,
             current_step="queued",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(UTC),
         )
 
         return paper.id, "created"
@@ -101,38 +112,43 @@ class IngestionService:
             status="processing",
             progress=0.1,
             current_step="downloading",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(UTC),
         )
 
-        pdf_data = self._storage.download_file(paper.storage_key)
+        try:
+            pdf_data = await asyncio.to_thread(self._storage.download_file, paper.storage_key)
 
-        self._jobs[job_id].progress = 0.3
-        self._jobs[job_id].current_step = "parsing"
+            self._jobs[job_id].progress = 0.3
+            self._jobs[job_id].current_step = "parsing"
 
-        parsed = self._parser.parse(pdf_data)
+            parsed = await asyncio.to_thread(self._parser.parse, pdf_data)
 
-        if parsed.sha256 != paper.sha256:
-            raise ValueError("PDF hash mismatch after parsing")
+            if parsed.sha256 != paper.sha256:
+                raise ValueError("PDF hash mismatch after parsing")
 
-        self._jobs[job_id].progress = 0.8
-        self._jobs[job_id].current_step = "saving"
+            self._jobs[job_id].progress = 0.8
+            self._jobs[job_id].current_step = "saving"
 
-        await self._repo.save_parsed_paper(paper_id, parsed)
+            await self._repo.save_parsed_paper(paper_id, parsed)
+        except Exception:
+            await self._repo.update_status(paper_id, PaperStatus.FAILED)
+            raise
 
         self._jobs[job_id].progress = 1.0
         self._jobs[job_id].status = "completed"
         self._jobs[job_id].current_step = "completed"
-        self._jobs[job_id].completed_at = datetime.utcnow()
+        self._jobs[job_id].completed_at = datetime.now(UTC)
 
         return parsed
 
     def get_job_status(self, job_id: UUID) -> IngestionJobStatus | None:
         return self._jobs.get(job_id)
 
-    def _get_settings(self):
+    def _get_settings(self) -> Settings:
         from packages.domain.config import get_settings
+
         return get_settings()
 
 
-def get_ingestion_service(session) -> IngestionService:
+def get_ingestion_service(session) -> IngestionService:  # type: ignore[no-untyped-def]
     return IngestionService(session)

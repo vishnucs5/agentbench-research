@@ -54,7 +54,7 @@ class TestIngestionService:
         file_data = b"pdf content"
         request = PaperIngestRequest(title="Test Paper", authors=["Author"], year=2024)
 
-        with patch.object(service._repo, "get_by_sha256", return_value=None):
+        with patch.object(service._repo, "get_by_sha256_for_project", return_value=None):
             with patch.object(service._repo, "create_paper") as mock_create:
                 mock_paper = MagicMock()
                 mock_paper.id = uuid4()
@@ -83,7 +83,9 @@ class TestIngestionService:
         existing_paper = MagicMock()
         existing_paper.id = uuid4()
 
-        with patch.object(service._repo, "get_by_sha256", return_value=existing_paper):
+        with patch.object(
+            service._repo, "get_by_sha256_for_project", return_value=existing_paper
+        ):
             paper_id, result = await service.ingest_upload(
                 project_id=project_id,
                 file_data=file_data,
@@ -169,6 +171,78 @@ class TestIngestionService:
 
                 with pytest.raises(ValueError, match="PDF hash mismatch"):
                     await service.process_paper(paper_id)
+
+    @pytest.mark.asyncio
+    async def test_process_failure_sets_failed_not_parsing(
+        self, service, mock_storage, mock_parser
+    ):
+        # upload corrupt PDF bytes, process must set status FAILED not stuck PARSING
+        paper_id = uuid4()
+        mock_paper = MagicMock()
+        mock_paper.id = paper_id
+        mock_paper.storage_key = "project/abc123.pdf"
+        mock_paper.sha256 = "abc123"
+        with patch.object(service._repo, "get_by_id", return_value=mock_paper):
+            with patch.object(
+                service._repo, "update_status", new_callable=AsyncMock
+            ) as mock_update:
+                mock_parser.parse.side_effect = ValueError("corrupt PDF")
+                with pytest.raises(ValueError, match="corrupt PDF"):
+                    await service.process_paper(paper_id)
+                statuses = [
+                    call.args[1] if len(call.args) > 1 else call.kwargs.get("status")
+                    for call in mock_update.call_args_list
+                ]
+                assert PaperStatus.FAILED in statuses
+
+    @pytest.mark.asyncio
+    async def test_ingest_upload_accepts_pdf_with_charset(self, service, mock_storage):
+        project_id = uuid4()
+        request = PaperIngestRequest(title="T")
+        with patch.object(
+            service._repo, "get_by_sha256_for_project", return_value=None
+        ):
+            with patch.object(service._repo, "create_paper") as mock_create:
+                mock_paper = MagicMock()
+                mock_paper.id = uuid4()
+                mock_create.return_value = mock_paper
+                pid, result = await service.ingest_upload(
+                    project_id, b"data", "a.pdf", "application/pdf; charset=binary", request
+                )
+                assert result == "created"
+                assert pid == mock_paper.id
+
+    @pytest.mark.asyncio
+    async def test_ingest_upload_scoped_dedup(self, service, mock_storage):
+        project_id = uuid4()
+        request = PaperIngestRequest()
+        with patch.object(
+            service._repo, "get_by_sha256_for_project", return_value=None
+        ) as mock_dedup:
+            with patch.object(service._repo, "create_paper") as mock_create:
+                mock_paper = MagicMock()
+                mock_paper.id = uuid4()
+                mock_create.return_value = mock_paper
+                await service.ingest_upload(
+                    project_id, b"data", "a.pdf", "application/pdf", request
+                )
+                mock_dedup.assert_called_once_with("abc123", project_id)
+
+    @pytest.mark.asyncio
+    async def test_ingest_upload_orphan_cleanup(self, service, mock_storage):
+        project_id = uuid4()
+        request = PaperIngestRequest()
+        with patch.object(
+            service._repo, "get_by_sha256_for_project", return_value=None
+        ):
+            with patch.object(
+                service._repo, "create_paper", side_effect=RuntimeError("db fail")
+            ):
+                with pytest.raises(RuntimeError, match="db fail"):
+                    await service.ingest_upload(
+                        project_id, b"data", "a.pdf", "application/pdf", request
+                    )
+                mock_storage.delete_file.assert_called_once()
 
     def test_get_job_status(self, service):
         job_id = uuid4()
