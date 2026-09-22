@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from packages.domain.database import get_session
@@ -7,6 +10,7 @@ from packages.domain.models import User
 from packages.security.auth import AuthService, get_auth_service
 from packages.security.schemas import Permission, UserRole, get_role_permissions
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
@@ -14,81 +18,124 @@ security = HTTPBearer(auto_error=False)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, auth_service: AuthService | None = None):
+    def __init__(self, app: Any, auth_service: AuthService | None = None) -> None:
         super().__init__(app)
         self.auth_service = auth_service or get_auth_service()
-        self._cache = None
+        self._cache: Any = None
         self.exempt_paths = {
             "/",
             "/healthz",
             "/docs",
             "/redoc",
             "/openapi.json",
-            "/dashboard",
-            "/app",
-            "/ui",
-            "/projects",
-            "/trace",
-            "/settings",
             "/v1/auth/login",
             "/v1/auth/register",
             "/v1/auth/refresh",
         }
 
-    async def _get_cache(self):
+    async def _get_cache(self) -> Any:
         if self._cache is None:
             from packages.cache.redis import RedisCache
             self._cache = RedisCache()
             await self._cache.connect()
         return self._cache
 
-    async def dispatch(self, request: Request, call_next):
-        if request.url.path in self.exempt_paths or request.url.path.startswith(("/static", "/dashboard", "/app", "/ui", "/assets", "/projects", "/trace", "/settings")):
+    async def _resolve_demo_user(self) -> User | None:
+        """Passwordless demo identity for local use.
+
+        Active only when demo_mode is on AND the app is not running in
+        production. Provisions the demo user on first use.
+        """
+        from packages.domain.config import get_settings
+
+        settings = get_settings()
+        if not settings.demo_mode or settings.is_production:
+            return None
+        async with get_session() as session:
+            result = await session.execute(
+                select(User).where(User.email == settings.demo_user_email)
+            )
+            user = result.scalar_one_or_none()
+            if user is None:
+                user = await self._provision_demo_user(session, settings.demo_user_email)
+            return user
+
+    async def _provision_demo_user(self, session: AsyncSession, email: str) -> User:
+        import hashlib
+        import secrets
+
+        from packages.domain.models import UserRole, UserStatus
+        from packages.security.auth import AuthService
+
+        user = User(
+            email=email,
+            email_hash=hashlib.sha256(email.lower().encode()).hexdigest(),
+            hashed_password=AuthService().hash_password(secrets.token_urlsafe(32)),
+            full_name="Demo Researcher",
+            display_name=email.split("@")[0],
+            role=UserRole.RESEARCHER,
+            status=UserStatus.ACTIVE,
+            is_active=True,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return user
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        if request.url.path in self.exempt_paths or request.url.path.startswith(
+            ("/static", "/assets", "/openapi.json")
+        ):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
-            return self._unauthorized("Missing or invalid authorization header")
+            demo_user = await self._resolve_demo_user()
+            if demo_user is None:
+                return self._unauthorized("Missing or invalid authorization header")
+            request.state.user = demo_user
+            request.state.token_payload = None
+            return await call_next(request)
 
         token = auth_header.split(" ")[1]
         payload = self.auth_service.decode_token(token)
         if not payload:
-            return self._unauthorized("Invalid or expired token")
+            demo_user = await self._resolve_demo_user()
+            if demo_user is None:
+                return self._unauthorized("Invalid or expired token")
+            request.state.user = demo_user
+            request.state.token_payload = None
+            return await call_next(request)
 
-        # Try to get user from cache first
-        user = None
-        try:
-            cache = await self._get_cache()
-            cached_user = await cache.get(f"user:{payload.user_id}")
-            if cached_user:
-                from packages.domain.models import User as UserModel
-                user = UserModel(**cached_user)
-        except Exception:
-            pass
+        # Always DB lookup for correctness; cache is write-through only.
+        # Removed buggy `UserModel(**cached_user)` construction which dropped
+        # required fields and mixed str vs UUID for user_id.
+        user: User | None = None
+        async with get_session() as session:
+            result = await session.execute(select(User).where(User.id == payload.user_id))
+            user = result.scalar_one_or_none()
 
-        # Fallback to DB lookup
-        if not user:
-            async with get_session() as session:
-                result = await session.execute(select(User).where(User.id == payload.user_id))
-                user = result.scalar_one_or_none()
-
-                # Cache for 5 minutes
-                if user:
-                    try:
-                        cache = await self._get_cache()
-                        await cache.set(
-                            f"user:{user.id}",
-                            {
-                                "id": str(user.id),
-                                "email": user.email,
-                                "full_name": user.full_name,
-                                "role": user.role.value if hasattr(user.role, "value") else user.role,
-                                "is_active": user.is_active,
-                            },
-                            ttl=300,
-                        )
-                    except Exception:
-                        pass
+            # Cache for 5 minutes (is_active flag + identity for observability)
+            if user:
+                try:
+                    cache = await self._get_cache()
+                    await cache.set(
+                        f"user:{user.id}",
+                        {
+                            "id": str(user.id),
+                            "email": user.email,
+                            "full_name": user.full_name,
+                            "role": user.role.value
+                            if hasattr(user.role, "value")
+                            else user.role,
+                            "is_active": user.is_active,
+                        },
+                        ttl=300,
+                    )
+                except Exception:
+                    pass
 
         if not user or not user.is_active:
             return self._unauthorized("User not found or inactive")
@@ -176,11 +223,30 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+async def _get_demo_user() -> User | None:
+    """Shared demo-mode fallback for dependency-injected auth."""
+    from packages.domain.config import get_settings
+
+    settings = get_settings()
+    if not settings.demo_mode or settings.is_production:
+        return None
+    async with get_session() as session:
+        from sqlalchemy import select
+
+        result = await session.execute(
+            select(User).where(User.email == settings.demo_user_email)
+        )
+        return result.scalar_one_or_none()
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     auth_service: AuthService = Depends(get_auth_service),
 ) -> User:
     if not credentials:
+        demo_user = await _get_demo_user()
+        if demo_user is not None:
+            return demo_user
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authorization header",
@@ -189,6 +255,9 @@ async def get_current_user(
 
     payload = auth_service.decode_token(credentials.credentials)
     if not payload:
+        demo_user = await _get_demo_user()
+        if demo_user is not None:
+            return demo_user
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from packages.domain.models import User
 from packages.evaluation.schemas import (
     Difficulty,
     EvaluationConfig,
@@ -13,6 +15,7 @@ from packages.evaluation.schemas import (
 from packages.evaluation.service import get_evaluation_service
 from packages.extraction.service import get_extraction_service
 from packages.retrieval.service import get_retrieval_service
+from packages.security.middleware import get_current_user
 
 router = APIRouter(prefix="/v1/evaluation", tags=["evaluation"])
 
@@ -23,13 +26,14 @@ router = APIRouter(prefix="/v1/evaluation", tags=["evaluation"])
     status_code=status.HTTP_201_CREATED,
 )
 async def run_evaluation(
+    current_user: User = Depends(get_current_user),
     config: EvaluationConfig | None = None,
-    extraction_service=Depends(get_extraction_service),
-    retrieval_service=Depends(get_retrieval_service),
-    synthesis_service=Depends(lambda: None),
-    verification_service=Depends(lambda: None),
-    report_service=Depends(lambda: None),
-):
+    extraction_service: Any = Depends(get_extraction_service),
+    retrieval_service: Any = Depends(get_retrieval_service),
+    synthesis_service: Any = Depends(lambda: None),
+    verification_service: Any = Depends(lambda: None),
+    report_service: Any = Depends(lambda: None),
+) -> EvaluationSummary:
 
     eval_service = get_evaluation_service(
         extraction_service=extraction_service,
@@ -44,12 +48,13 @@ async def run_evaluation(
 
 @router.get("/runs", response_model=list[EvaluationRun])
 async def list_evaluation_runs(
-    extraction_service=Depends(get_extraction_service),
-    retrieval_service=Depends(get_retrieval_service),
-    synthesis_service=Depends(lambda: None),
-    verification_service=Depends(lambda: None),
-    report_service=Depends(lambda: None),
-):
+    current_user: User = Depends(get_current_user),
+    extraction_service: Any = Depends(get_extraction_service),
+    retrieval_service: Any = Depends(get_retrieval_service),
+    synthesis_service: Any = Depends(lambda: None),
+    verification_service: Any = Depends(lambda: None),
+    report_service: Any = Depends(lambda: None),
+) -> list[EvaluationRun]:
 
     eval_service = get_evaluation_service(
         extraction_service=extraction_service,
@@ -64,12 +69,13 @@ async def list_evaluation_runs(
 @router.get("/runs/{run_id}", response_model=EvaluationRun)
 async def get_evaluation_run(
     run_id: UUID,
-    extraction_service=Depends(get_extraction_service),
-    retrieval_service=Depends(get_retrieval_service),
-    synthesis_service=Depends(lambda: None),
-    verification_service=Depends(lambda: None),
-    report_service=Depends(lambda: None),
-):
+    current_user: User = Depends(get_current_user),
+    extraction_service: Any = Depends(get_extraction_service),
+    retrieval_service: Any = Depends(get_retrieval_service),
+    synthesis_service: Any = Depends(lambda: None),
+    verification_service: Any = Depends(lambda: None),
+    report_service: Any = Depends(lambda: None),
+) -> EvaluationRun:
 
     eval_service = get_evaluation_service(
         extraction_service=extraction_service,
@@ -87,12 +93,13 @@ async def get_evaluation_run(
 @router.get("/runs/{run_id}/results")
 async def get_run_results(
     run_id: UUID,
-    extraction_service=Depends(get_extraction_service),
-    retrieval_service=Depends(get_retrieval_service),
-    synthesis_service=Depends(lambda: None),
-    verification_service=Depends(lambda: None),
-    report_service=Depends(lambda: None),
-):
+    current_user: User = Depends(get_current_user),
+    extraction_service: Any = Depends(get_extraction_service),
+    retrieval_service: Any = Depends(get_retrieval_service),
+    synthesis_service: Any = Depends(lambda: None),
+    verification_service: Any = Depends(lambda: None),
+    report_service: Any = Depends(lambda: None),
+) -> dict[str, object]:
 
     eval_service = get_evaluation_service(
         extraction_service=extraction_service,
@@ -111,12 +118,13 @@ async def get_run_results(
 @router.get("/runs/{run_id}/metrics")
 async def get_run_metrics(
     run_id: UUID,
-    extraction_service=Depends(get_extraction_service),
-    retrieval_service=Depends(get_retrieval_service),
-    synthesis_service=Depends(lambda: None),
-    verification_service=Depends(lambda: None),
-    report_service=Depends(lambda: None),
-):
+    current_user: User = Depends(get_current_user),
+    extraction_service: Any = Depends(get_extraction_service),
+    retrieval_service: Any = Depends(get_retrieval_service),
+    synthesis_service: Any = Depends(lambda: None),
+    verification_service: Any = Depends(lambda: None),
+    report_service: Any = Depends(lambda: None),
+) -> dict[str, object]:
 
     eval_service = get_evaluation_service(
         extraction_service=extraction_service,
@@ -133,10 +141,14 @@ async def get_run_metrics(
 
 
 @router.get("/benchmark/categories")
-async def list_categories():
+async def list_categories(
+    current_user: User = Depends(get_current_user),
+) -> list[dict[str, str]]:
     return [{"value": c.value, "label": c.value.replace("_", " ").title()} for c in TaskCategory]
 
 
 @router.get("/benchmark/difficulties")
-async def list_difficulties():
+async def list_difficulties(
+    current_user: User = Depends(get_current_user),
+) -> list[dict[str, str]]:
     return [{"value": d.value, "label": d.value.title()} for d in Difficulty]

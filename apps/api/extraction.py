@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from packages.domain.database import get_db_session
+from packages.domain.models import Project, User
 from packages.extraction.schemas import (
     ClaimExtractionRequest,
     ClaimExtractionResponse,
@@ -14,8 +15,25 @@ from packages.extraction.schemas import (
     ExtractionJobStatus,
 )
 from packages.extraction.service import ExtractionService, get_extraction_service
+from packages.security.middleware import get_current_user
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/v1/projects/{project_id}/papers/{paper_id}/extraction", tags=["extraction"])
+
+
+async def _require_owned_project(
+    session: AsyncSession, project_id: UUID, current_user: User
+) -> None:
+    result = await session.execute(
+        select(Project).where(
+            Project.id == project_id, Project.owner_id == current_user.id
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
 
 
 @router.post(
@@ -27,11 +45,14 @@ async def extract_claims(
     project_id: UUID,
     paper_id: UUID,
     request: ClaimExtractionRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
     service: ExtractionService = Depends(get_extraction_service),
 ) -> list[ClaimExtractionResponse]:
+    await _require_owned_project(session, project_id, current_user)
     from packages.ingestion.repository import PaperRepository
 
-    repo = PaperRepository(get_db_session())
+    repo = PaperRepository(session)
     paper = await repo.get_by_id(paper_id)
 
     if not paper or paper.project_id != project_id:
@@ -48,17 +69,17 @@ async def extract_claims(
 
     from packages.ingestion.parser import create_parser
     parser = create_parser()
-    pdf_data = await get_paper_pdf(paper_id)
+    pdf_data = await get_paper_pdf(paper_id, session)
     parsed = parser.parse(pdf_data)
 
     return await service.extract_claims(paper_id, parsed, request)
 
 
-async def get_paper_pdf(paper_id: UUID) -> bytes:
+async def get_paper_pdf(paper_id: UUID, session: AsyncSession) -> bytes:
     from packages.ingestion.repository import PaperRepository
     from packages.ingestion.storage import get_storage_service
 
-    repo = PaperRepository(get_db_session())
+    repo = PaperRepository(session)
     paper = await repo.get_by_id(paper_id)
 
     if not paper:
@@ -77,8 +98,11 @@ async def list_claims(
     paper_id: UUID,
     claim_type: ClaimType | None = None,
     claim_status: ClaimStatus | None = None,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
     service: ExtractionService = Depends(get_extraction_service),
 ) -> list[ClaimExtractionResponse]:
+    await _require_owned_project(session, project_id, current_user)
     claims = await service.get_paper_claims(paper_id)
 
     if claim_type:
@@ -94,8 +118,11 @@ async def get_claim(
     project_id: UUID,
     paper_id: UUID,
     claim_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
     service: ExtractionService = Depends(get_extraction_service),
 ) -> ClaimExtractionResponse:
+    await _require_owned_project(session, project_id, current_user)
     claim = await service.get_claim(claim_id)
     if not claim:
         raise HTTPException(
@@ -110,8 +137,11 @@ async def add_evidence_link(
     project_id: UUID,
     paper_id: UUID,
     request: EvidenceLinkRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
     service: ExtractionService = Depends(get_extraction_service),
 ) -> EvidenceLinkResponse:
+    await _require_owned_project(session, project_id, current_user)
     return await service.link_evidence(request)
 
 
@@ -120,8 +150,11 @@ async def get_extraction_job(
     project_id: UUID,
     paper_id: UUID,
     job_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
     service: ExtractionService = Depends(get_extraction_service),
 ) -> ExtractionJobStatus:
+    await _require_owned_project(session, project_id, current_user)
     job = service.get_job_status(job_id)
     if not job or job.paper_id != paper_id:
         raise HTTPException(

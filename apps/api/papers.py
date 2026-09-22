@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from packages.domain.database import get_db_session
+from packages.domain.models import Chunk, PaperPage, PaperStatus, Project, User
 from packages.ingestion.schemas import (
     IngestionJobStatus,
     PaperIngestRequest,
@@ -12,9 +13,35 @@ from packages.ingestion.schemas import (
     PaperStatusResponse,
 )
 from packages.ingestion.service import IngestionService, get_ingestion_service
+from packages.security.middleware import get_current_user
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/v1/projects/{project_id}/papers", tags=["papers"])
+
+
+async def _require_owned_project(
+    session: AsyncSession, project_id: UUID, current_user: User
+) -> None:
+    result = await session.execute(
+        select(Project).where(
+            Project.id == project_id, Project.owner_id == current_user.id
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
+
+
+class PaperProcessResponse(BaseModel):
+    paper_id: UUID
+    status: str
+    page_count: int
+    chunk_count: int
+    indexed: bool
+    message: str
 
 
 @router.post(
@@ -29,8 +56,11 @@ async def upload_paper(
     authors: str | None = Form(None),
     year: int | None = Form(None),
     doi: str | None = Form(None),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
     service: IngestionService = Depends(get_ingestion_service),
-):
+) -> PaperIngestResponse:
+    await _require_owned_project(session, project_id, current_user)
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -83,8 +113,10 @@ async def list_papers(
     page: int = 1,
     page_size: int = 20,
     status_filter: str | None = None,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> PaperListResponse:
+    await _require_owned_project(session, project_id, current_user)
     from packages.domain.models import PaperStatus
     from packages.ingestion.repository import PaperRepository
 
@@ -131,8 +163,10 @@ async def list_papers(
 async def get_paper(
     project_id: UUID,
     paper_id: UUID,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> PaperStatusResponse:
+    await _require_owned_project(session, project_id, current_user)
     from packages.ingestion.repository import PaperRepository
 
     repo = PaperRepository(session)
@@ -161,8 +195,10 @@ async def get_paper_pages(
     project_id: UUID,
     paper_id: UUID,
     page_number: int | None = None,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, object]:
+    await _require_owned_project(session, project_id, current_user)
     from packages.ingestion.repository import PaperRepository
 
     repo = PaperRepository(session)
@@ -201,13 +237,112 @@ async def get_paper_pages(
     }
 
 
+@router.post("/{paper_id}/process", response_model=PaperProcessResponse)
+async def process_paper_endpoint(
+    project_id: UUID,
+    paper_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    service: IngestionService = Depends(get_ingestion_service),
+) -> PaperProcessResponse:
+    """Parse a paper, persist chunks, and index for search (best-effort)."""
+    await _require_owned_project(session, project_id, current_user)
+    from packages.ingestion.repository import PaperRepository
+
+    repo = PaperRepository(session)
+    paper = await repo.get_by_id(paper_id)
+    if not paper or paper.project_id != project_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Paper not found",
+        )
+
+    try:
+        parsed = await service.process_paper(paper_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        await repo.update_status(paper_id, PaperStatus.FAILED)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Processing failed: {str(e)}",
+        ) from e
+
+    # Map page numbers to persisted page ids for chunk linkage
+    page_rows = (
+        await session.execute(
+            select(PaperPage).where(PaperPage.paper_id == paper_id)
+        )
+    ).scalars().all()
+    if not page_rows:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No pages persisted for paper",
+        )
+    page_ids = {p.page_number: p.id for p in page_rows}
+
+    # Chunk and persist to DB (powers local BM25 fallback)
+    from packages.retrieval.chunker import ChunkingService
+
+    chunker = ChunkingService()
+    doc_chunks = chunker.chunk_paper(parsed, paper_id)
+    for c in doc_chunks:
+        session.add(
+            Chunk(
+                paper_id=paper_id,
+                page_id=page_ids.get(c.page_number, page_rows[0].id),
+                text=c.text,
+                token_count=c.token_count,
+                chunk_version="1.0.0",
+                metadata_json=dict(c.metadata or {}),
+            )
+        )
+    await session.flush()
+
+    # Best-effort vector/BM25 indexing (works without Qdrant/embeddings)
+    indexed = False
+    try:
+        from packages.retrieval.service import get_retrieval_service
+
+        stats = await get_retrieval_service().index_paper(
+            parsed,
+            str(paper_id),
+            str(project_id),
+            metadata={"paper_title": paper.title},
+        )
+        indexed = bool(stats.get("bm25_indexed"))
+    except Exception:
+        indexed = False
+
+    await repo.update_status(
+        paper_id, PaperStatus.INDEXED if indexed else PaperStatus.PARSED
+    )
+
+    return PaperProcessResponse(
+        paper_id=paper_id,
+        status=PaperStatus.INDEXED.value if indexed else PaperStatus.PARSED.value,
+        page_count=len(parsed.pages),
+        chunk_count=len(doc_chunks),
+        indexed=indexed,
+        message="Paper processed successfully"
+        if indexed
+        else "Paper parsed; search indexing deferred",
+    )
+
+
 @router.get("/{paper_id}/job/{job_id}", response_model=IngestionJobStatus)
 async def get_ingestion_job(
     project_id: UUID,
     paper_id: UUID,
     job_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
     service: IngestionService = Depends(get_ingestion_service),
-):
+) -> IngestionJobStatus:
+    await _require_owned_project(session, project_id, current_user)
     job = service.get_job_status(job_id)
     if not job or job.paper_id != paper_id:
         raise HTTPException(

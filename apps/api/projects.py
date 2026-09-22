@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import uuid
-from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from packages.domain.database import get_db_session
 from packages.domain.models import Paper, Project, ResearchRun, User
 from packages.security.middleware import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -16,9 +15,9 @@ router = APIRouter(prefix="/v1/projects", tags=["projects"])
 
 
 class ProjectCreate(BaseModel):
-    name: str
-    domain: str = "network-intrusion-detection"
-    retention_days: int = 90
+    name: str = Field(min_length=1, max_length=255)
+    domain: str = Field(default="network-intrusion-detection", max_length=100)
+    retention_days: int = Field(default=90, ge=1, le=3650)
 
 
 class ProjectUpdate(BaseModel):
@@ -43,7 +42,7 @@ async def create_project(
     payload: ProjectCreate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> ProjectResponse:
     project = Project(
         owner_id=current_user.id,
         name=payload.name,
@@ -69,12 +68,12 @@ async def create_project(
 async def list_projects(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> list[ProjectResponse]:
     result = await session.execute(
         select(
             Project,
-            func.count(Paper.id).label("paper_count"),
-            func.count(ResearchRun.id).label("run_count"),
+            func.count(func.distinct(Paper.id)).label("paper_count"),
+            func.count(func.distinct(ResearchRun.id)).label("run_count"),
         )
         .outerjoin(Paper, Paper.project_id == Project.id)
         .outerjoin(ResearchRun, ResearchRun.project_id == Project.id)
@@ -97,29 +96,15 @@ async def list_projects(
         )
         for p, paper_count, run_count in projects
     ]
-    if not out:
-        demo_id = str(uuid.uuid4())
-        out.append(
-            ProjectResponse(
-                id=demo_id,
-                owner_id=str(current_user.id),
-                name="Demo NIDS Project",
-                domain="network-intrusion-detection",
-                retention_days=90,
-                created_at="2026-09-20T00:00:00",
-                paper_count=0,
-                run_count=0,
-            )
-        )
     return out
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(
-    project_id: str,
+    project_id: UUID,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> ProjectResponse:
     result = await session.execute(
         select(Project)
         .options(selectinload(Project.papers), selectinload(Project.runs))
@@ -142,10 +127,10 @@ async def get_project(
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(
-    project_id: str,
+    project_id: UUID,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> None:
     result = await session.execute(
         select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )
