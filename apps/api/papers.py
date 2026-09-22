@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from packages.domain.database import get_db_session
 from packages.domain.models import Chunk, PaperPage, PaperStatus, Project, User
 from packages.ingestion.schemas import (
@@ -110,8 +110,8 @@ async def upload_paper(
 @router.get("", response_model=PaperListResponse)
 async def list_papers(
     project_id: UUID,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     status_filter: str | None = None,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
@@ -290,10 +290,16 @@ async def process_paper_endpoint(
     chunker = ChunkingService()
     doc_chunks = chunker.chunk_paper(parsed, paper_id)
     for c in doc_chunks:
+        pid = page_ids.get(c.page_number)
+        if pid is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Missing page {c.page_number} for paper {paper_id}",
+            )
         session.add(
             Chunk(
                 paper_id=paper_id,
-                page_id=page_ids.get(c.page_number, page_rows[0].id),
+                page_id=pid,
                 text=c.text,
                 token_count=c.token_count,
                 chunk_version="1.0.0",

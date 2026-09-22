@@ -34,11 +34,14 @@ async def _hydrate_local_index(
     project_id: UUID | None,
 ) -> None:
     """Rebuild the in-memory BM25 corpus from DB chunks when no vector store."""
+    from packages.domain.models import PaperPage
+
     if service.qdrant is not None or service._bm25_corpus:
         return
     query = (
-        select(Chunk, Paper)
+        select(Chunk, Paper, PaperPage)
         .join(Paper, Chunk.paper_id == Paper.id)
+        .join(PaperPage, Chunk.page_id == PaperPage.id)
         .order_by(Chunk.paper_id)
         .limit(5000)
     )
@@ -51,13 +54,13 @@ async def _hydrate_local_index(
             "paper_id": str(chunk.paper_id),
             "project_id": str(paper.project_id),
             "paper_title": paper.title,
-            "page_number": 1,
-            "section_label": None,
+            "page_number": page.page_number,
+            "section_label": page.section_label,
             "text": chunk.text,
             "token_count": chunk.token_count,
             "metadata": dict(chunk.metadata_json or {}),
         }
-        for chunk, paper in rows
+        for chunk, paper, page in rows
     ]
     if chunk_dicts:
         service.rebuild_local_index(chunk_dicts)
@@ -124,14 +127,13 @@ async def get_project_index_stats(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, object]:
     await _require_owned_project(session, project_id, current_user)
-    qdrant = service.qdrant
-    if qdrant is None:
-        return {
-            "project_id": str(project_id),
-            "total_chunks": 0,
-            "collection_status": "unavailable",
+    if service.qdrant is None:
+        info: dict[str, object] = {
+            "points_count": len(service._bm25_corpus),
+            "status": "local",
         }
-    info = qdrant.get_collection_info() or {}
+    else:
+        info = service.qdrant.get_collection_info() or {}
     return {
         "project_id": str(project_id),
         "total_chunks": info.get("points_count", 0),

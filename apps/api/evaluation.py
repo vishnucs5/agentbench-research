@@ -16,8 +16,34 @@ from packages.evaluation.service import get_evaluation_service
 from packages.extraction.service import get_extraction_service
 from packages.retrieval.service import get_retrieval_service
 from packages.security.middleware import get_current_user
+from packages.synthesis.service import get_synthesis_service
+from packages.verification.report_generator import get_report_generation_service
+from packages.verification.verifier import get_citation_verification_service
 
 router = APIRouter(prefix="/v1/evaluation", tags=["evaluation"])
+
+
+def _get_synthesis_service(
+    extraction_service: Any = Depends(get_extraction_service),
+) -> Any:
+    return get_synthesis_service(extraction_service)
+
+
+def _get_verification_service(
+    extraction_service: Any = Depends(get_extraction_service),
+    retrieval_service: Any = Depends(get_retrieval_service),
+) -> Any:
+    return get_citation_verification_service(extraction_service, retrieval_service)
+
+
+def _get_report_service(
+    extraction_service: Any = Depends(get_extraction_service),
+    synthesis_service: Any = Depends(_get_synthesis_service),
+    verification_service: Any = Depends(_get_verification_service),
+) -> Any:
+    return get_report_generation_service(
+        extraction_service, synthesis_service, verification_service
+    )
 
 
 @router.post(
@@ -30,9 +56,9 @@ async def run_evaluation(
     config: EvaluationConfig | None = None,
     extraction_service: Any = Depends(get_extraction_service),
     retrieval_service: Any = Depends(get_retrieval_service),
-    synthesis_service: Any = Depends(lambda: None),
-    verification_service: Any = Depends(lambda: None),
-    report_service: Any = Depends(lambda: None),
+    synthesis_service: Any = Depends(_get_synthesis_service),
+    verification_service: Any = Depends(_get_verification_service),
+    report_service: Any = Depends(_get_report_service),
 ) -> EvaluationSummary:
 
     eval_service = get_evaluation_service(
@@ -51,9 +77,9 @@ async def list_evaluation_runs(
     current_user: User = Depends(get_current_user),
     extraction_service: Any = Depends(get_extraction_service),
     retrieval_service: Any = Depends(get_retrieval_service),
-    synthesis_service: Any = Depends(lambda: None),
-    verification_service: Any = Depends(lambda: None),
-    report_service: Any = Depends(lambda: None),
+    synthesis_service: Any = Depends(_get_synthesis_service),
+    verification_service: Any = Depends(_get_verification_service),
+    report_service: Any = Depends(_get_report_service),
 ) -> list[EvaluationRun]:
 
     eval_service = get_evaluation_service(
@@ -72,9 +98,9 @@ async def get_evaluation_run(
     current_user: User = Depends(get_current_user),
     extraction_service: Any = Depends(get_extraction_service),
     retrieval_service: Any = Depends(get_retrieval_service),
-    synthesis_service: Any = Depends(lambda: None),
-    verification_service: Any = Depends(lambda: None),
-    report_service: Any = Depends(lambda: None),
+    synthesis_service: Any = Depends(_get_synthesis_service),
+    verification_service: Any = Depends(_get_verification_service),
+    report_service: Any = Depends(_get_report_service),
 ) -> EvaluationRun:
 
     eval_service = get_evaluation_service(
@@ -96,9 +122,9 @@ async def get_run_results(
     current_user: User = Depends(get_current_user),
     extraction_service: Any = Depends(get_extraction_service),
     retrieval_service: Any = Depends(get_retrieval_service),
-    synthesis_service: Any = Depends(lambda: None),
-    verification_service: Any = Depends(lambda: None),
-    report_service: Any = Depends(lambda: None),
+    synthesis_service: Any = Depends(_get_synthesis_service),
+    verification_service: Any = Depends(_get_verification_service),
+    report_service: Any = Depends(_get_report_service),
 ) -> dict[str, object]:
 
     eval_service = get_evaluation_service(
@@ -121,9 +147,9 @@ async def get_run_metrics(
     current_user: User = Depends(get_current_user),
     extraction_service: Any = Depends(get_extraction_service),
     retrieval_service: Any = Depends(get_retrieval_service),
-    synthesis_service: Any = Depends(lambda: None),
-    verification_service: Any = Depends(lambda: None),
-    report_service: Any = Depends(lambda: None),
+    synthesis_service: Any = Depends(_get_synthesis_service),
+    verification_service: Any = Depends(_get_verification_service),
+    report_service: Any = Depends(_get_report_service),
 ) -> dict[str, object]:
 
     eval_service = get_evaluation_service(

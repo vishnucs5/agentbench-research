@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import inspect
+from typing import Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from packages.domain.database import get_db_session
-from packages.domain.models import Project, User
+from packages.domain.models import PaperStatus, Project, User
 from packages.extraction.schemas import (
     ClaimExtractionRequest,
     ClaimExtractionResponse,
@@ -61,7 +63,7 @@ async def extract_claims(
             detail="Paper not found",
         )
 
-    if paper.status.value != "parsed":
+    if paper.status not in (PaperStatus.PARSED, PaperStatus.INDEXED):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Paper must be parsed before extraction",
@@ -75,7 +77,9 @@ async def extract_claims(
     return await service.extract_claims(paper_id, parsed, request)
 
 
-async def get_paper_pdf(paper_id: UUID, session: AsyncSession) -> bytes:
+async def get_paper_pdf(
+    paper_id: UUID, session: AsyncSession = Depends(get_db_session)
+) -> bytes:
     from packages.ingestion.repository import PaperRepository
     from packages.ingestion.storage import get_storage_service
 
@@ -89,7 +93,10 @@ async def get_paper_pdf(paper_id: UUID, session: AsyncSession) -> bytes:
         )
 
     storage = get_storage_service()
-    return storage.download_file(paper.storage_key)
+    result: Any = storage.download_file(paper.storage_key)
+    if inspect.isawaitable(result):
+        return cast(bytes, await result)
+    return cast(bytes, result)
 
 
 @router.get("", response_model=list[ClaimExtractionResponse])

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -7,6 +10,7 @@ from packages.cache.memory import MemoryCache
 from packages.cache.redis import RedisCache
 from packages.dashboard.schemas import (
     DashboardFilters,
+    EventType,
     PaginatedRuns,
     ProjectDashboardStats,
     RunTraceResponse,
@@ -18,6 +22,11 @@ from packages.domain.models import Project, ResearchRun, User
 from packages.security.middleware import get_current_user
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+def _etag(payload: dict[str, Any]) -> str:
+    raw = str(sorted(payload.items())).encode()
+    return '"' + hashlib.sha256(raw).hexdigest()[:32] + '"'
 
 router = APIRouter(prefix="/v1/dashboard", tags=["dashboard"])
 
@@ -58,6 +67,8 @@ async def _require_owned_run(
 async def get_cache() -> RedisCache | MemoryCache:
     from apps.api.main import cache_client
 
+    if cache_client is None:
+        return MemoryCache()
     return cache_client
 
 
@@ -70,7 +81,7 @@ async def get_project_stats(
     session: AsyncSession = Depends(get_db_session),
     service: TraceReplayService = Depends(get_trace_replay_service),
     cache: RedisCache | MemoryCache = Depends(get_cache),
-) -> ProjectDashboardStats | None:
+) -> ProjectDashboardStats | Response:
     await _require_owned_project(session, project_id, current_user)
     cache_key = f"stats:{project_id}"
     try:
@@ -92,10 +103,9 @@ async def get_project_stats(
         except Exception:
             pass
 
-    etag = f'"{hash(str(result.model_dump()))}"'
+    etag = _etag(result.model_dump())
     if request.headers.get("if-none-match") == etag:
-        response.status_code = 304
-        return None
+        return Response(status_code=304)
 
     response.headers["Cache-Control"] = "private, max-age=30"
     response.headers["ETag"] = etag
@@ -118,11 +128,22 @@ async def list_project_runs(
     session: AsyncSession = Depends(get_db_session),
     service: TraceReplayService = Depends(get_trace_replay_service),
     cache: RedisCache | MemoryCache = Depends(get_cache),
-) -> PaginatedRuns | None:
+) -> PaginatedRuns | Response:
     await _require_owned_project(session, project_id, current_user)
-    from datetime import datetime
+    try:
+        date_from_dt = datetime.fromisoformat(date_from) if date_from else None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid date_from") from None
+    try:
+        date_to_dt = datetime.fromisoformat(date_to) if date_to else None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid date_to") from None
 
-    cache_key = f"runs:{project_id}:p{page}:s{','.join(status or [])}:m{','.join(model_profile or [])}:{search}:{date_from}:{date_to}"
+    cache_key = (
+        f"runs:{project_id}:p{page}:ps{page_size}"
+        f":s{','.join(status or [])}:m{','.join(model_profile or [])}"
+        f":{str(search)[:64]}:{date_from}:{date_to}"
+    )
     try:
         cached = await cache.get(cache_key)
     except Exception:
@@ -133,8 +154,8 @@ async def list_project_runs(
         filters = DashboardFilters(
             project_ids=[project_id],
             statuses=list(status) if status else None,
-            date_from=datetime.fromisoformat(date_from) if date_from else None,
-            date_to=datetime.fromisoformat(date_to) if date_to else None,
+            date_from=date_from_dt,
+            date_to=date_to_dt,
             model_profiles=model_profile,
             search_query=search,
             page=page,
@@ -146,10 +167,9 @@ async def list_project_runs(
         except Exception:
             pass
 
-    etag = f'"{hash(str(result.model_dump()))}"'
+    etag = _etag(result.model_dump())
     if request.headers.get("if-none-match") == etag:
-        response.status_code = 304
-        return None
+        return Response(status_code=304)
 
     response.headers["Cache-Control"] = "private, max-age=15"
     response.headers["ETag"] = etag
@@ -174,7 +194,10 @@ async def get_run_trace(
     cache: RedisCache | MemoryCache = Depends(get_cache),
 ) -> RunTraceResponse | None:
     await _require_owned_run(session, run_id, current_user)
-    from packages.dashboard.schemas import EventType
+    try:
+        event_types_enum = [EventType(e) for e in event_types] if event_types else None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid event_type") from None
 
     cache_key = f"trace:{run_id}:et{','.join(event_types or [])}:c{','.join(components or [])}:st{','.join(statuses or [])}:ss{start_sequence}:es{end_sequence}:ev{include_evidence}:r{include_redacted}"
     try:
@@ -185,7 +208,7 @@ async def get_run_trace(
         return RunTraceResponse(**cached)
 
     trace_filter = TraceFilter(
-        event_types=[EventType(e) for e in event_types] if event_types else None,
+        event_types=event_types_enum,
         components=components,
         statuses=statuses,
         start_sequence=start_sequence,
@@ -267,18 +290,22 @@ async def list_all_runs(
     session: AsyncSession = Depends(get_db_session),
     service: TraceReplayService = Depends(get_trace_replay_service),
 ) -> object:
-    from datetime import datetime
-
-    from packages.dashboard.schemas import DashboardFilters
-
     if project_ids:
         for pid in project_ids:
             await _require_owned_project(session, pid, current_user)
+    try:
+        date_from_dt = datetime.fromisoformat(date_from) if date_from else None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid date_from") from None
+    try:
+        date_to_dt = datetime.fromisoformat(date_to) if date_to else None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid date_to") from None
     filters = DashboardFilters(
         project_ids=project_ids,
         statuses=list(status) if status else None,
-        date_from=datetime.fromisoformat(date_from) if date_from else None,
-        date_to=datetime.fromisoformat(date_to) if date_to else None,
+        date_from=date_from_dt,
+        date_to=date_to_dt,
         model_profiles=model_profile,
         search_query=search,
         page=page,

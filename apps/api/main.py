@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
@@ -28,7 +29,7 @@ class HealthResponse(BaseModel):
     checks: dict[str, Any]
 
 
-cache_client = None
+cache_client: RedisCache | MemoryCache | None = None
 
 
 @asynccontextmanager
@@ -47,6 +48,15 @@ async def lifespan(app: FastAPI):
         cache_client = MemoryCache()
 
     await init_db()
+
+    # Load persisted BM25 search index (best-effort; rebuilt on paper processing)
+    try:
+        from packages.retrieval.service import get_retrieval_service
+
+        get_retrieval_service().load_bm25_index()
+    except Exception:
+        pass
+
     yield
     if hasattr(cache_client, "disconnect"):
         await cache_client.disconnect()
@@ -67,9 +77,14 @@ def create_app() -> FastAPI:
 
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RateLimitMiddleware, requests_per_minute=60, requests_per_hour=1000)
+    _configured = getattr(settings, "cors_allowed_origins", None)
+    if settings.is_development:
+        _allow_origins = ["http://localhost:8501", "http://localhost:3000"]
+    else:
+        _allow_origins = list(_configured) if isinstance(_configured, list) and _configured else []
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"] if settings.is_development else [],
+        allow_origins=_allow_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -88,8 +103,7 @@ def create_app() -> FastAPI:
     from apps.api.retrieval import router as retrieval_router
     from apps.api.synthesis import router as synthesis_router
     from apps.api.verification import router as verification_router
-    from packages.websocket import websocket_router
-    from packages.websocket import ws_manager
+    from packages.websocket import websocket_router, ws_manager
     app.include_router(auth_router)
     app.include_router(projects_router)
     app.include_router(papers_router)
@@ -105,19 +119,30 @@ def create_app() -> FastAPI:
     # Expose ws_manager for use in other modules
     app.state.ws_manager = ws_manager
 
-    app.mount("/assets", StaticFiles(directory="apps/api/static/assets"), name="static-assets")
+    if Path("apps/api/static/assets").is_dir():
+        app.mount("/assets", StaticFiles(directory="apps/api/static/assets"), name="static-assets")
 
     @app.get("/healthz", response_model=HealthResponse)
     async def health_check() -> HealthResponse:
+        from packages.domain.database import engine
+        from sqlalchemy import text
+
+        db_status = "connected"
+        try:
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+        except Exception:
+            db_status = "disconnected"
         cache_status = "connected" if isinstance(cache_client, RedisCache) else "in-memory"
+        app_status = "healthy" if db_status == "connected" else "degraded"
         return HealthResponse(
-            status="healthy",
+            status=app_status,
             version="0.1.0",
             environment=settings.app_env,
-            database="connected",
+            database=db_status,
             cache=cache_status,
             checks={
-                "database": "ok",
+                "database": db_status,
                 "cache": cache_status,
                 "config": "ok",
             },
