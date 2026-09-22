@@ -2,19 +2,21 @@ from __future__ import annotations
 
 import hashlib
 import io
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import timedelta
+from pathlib import Path
 
 from minio import Minio
 from minio.error import S3Error
 from packages.domain.config import get_settings
 
+logger = logging.getLogger(__name__)
+
 
 class StorageService:
-    def __init__(self):
-        import logging
-        from pathlib import Path
-
+    def __init__(self) -> None:
         settings = get_settings()
         self._bucket = settings.minio_bucket
         self._client: Minio | None = None
@@ -28,9 +30,7 @@ class StorageService:
             )
             self._ensure_bucket()
         except Exception as e:
-            logging.getLogger(__name__).warning(
-                "MinIO unreachable (%s); falling back to local disk storage", e
-            )
+            logger.warning("MinIO unreachable (%s); falling back to local disk storage", e)
             self._client = None
             self._local_dir = Path(settings.local_storage_path)
             self._local_dir.mkdir(parents=True, exist_ok=True)
@@ -39,18 +39,22 @@ class StorageService:
     def is_local(self) -> bool:
         return self._client is None
 
-    def _local_path(self, object_key: str):
-        assert self._local_dir is not None
+    def _local_path(self, object_key: str) -> Path:
+        if self._local_dir is None:
+            raise RuntimeError("Local storage is not configured")
         path = self._local_dir / object_key
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
     def _ensure_bucket(self) -> None:
-        if not self._client.bucket_exists(self._bucket):
-            self._client.make_bucket(self._bucket)
+        client = self._client
+        if client is None:
+            return
+        if not client.bucket_exists(self._bucket):
+            client.make_bucket(self._bucket)
 
     @property
-    def client(self) -> Minio:
+    def client(self) -> Minio | None:
         return self._client
 
     @property
@@ -76,12 +80,12 @@ class StorageService:
         data: bytes,
         content_type: str = "application/pdf",
     ) -> str:
-        if self.is_local:
+        client = self._client
+        if client is None:
             self._local_path(object_key).write_bytes(data)
             return object_key
-        assert self._client is not None
         stream = io.BytesIO(data)
-        self._client.put_object(
+        client.put_object(
             self._bucket,
             object_key,
             stream,
@@ -91,29 +95,30 @@ class StorageService:
         return object_key
 
     def download_file(self, object_key: str) -> bytes:
-        if self.is_local:
+        client = self._client
+        if client is None:
             return self._local_path(object_key).read_bytes()
-        assert self._client is not None
-        response = self._client.get_object(self._bucket, object_key)
+        response = client.get_object(self._bucket, object_key)
         try:
-            return response.read()
+            data: bytes = response.read()
+            return data
         finally:
             response.close()
             response.release_conn()
 
     def delete_file(self, object_key: str) -> None:
-        if self.is_local:
+        client = self._client
+        if client is None:
             self._local_path(object_key).unlink(missing_ok=True)
             return
-        assert self._client is not None
-        self._client.remove_object(self._bucket, object_key)
+        client.remove_object(self._bucket, object_key)
 
     def file_exists(self, object_key: str) -> bool:
-        if self.is_local:
+        client = self._client
+        if client is None:
             return self._local_path(object_key).exists()
-        assert self._client is not None
         try:
-            self._client.stat_object(self._bucket, object_key)
+            client.stat_object(self._bucket, object_key)
             return True
         except S3Error as e:
             if e.code == "NoSuchKey":
@@ -121,10 +126,12 @@ class StorageService:
             raise
 
     def get_presigned_url(self, object_key: str, expires: int = 3600) -> str:
-        if self.is_local:
+        client = self._client
+        if client is None:
             return f"local://{object_key}"
-        assert self._client is not None
-        return self._client.presigned_get_object(self._bucket, object_key, expires=expires)
+        return client.presigned_get_object(
+            self._bucket, object_key, expires=timedelta(seconds=expires)
+        )
 
 
 _storage_service: StorageService | None = None

@@ -196,6 +196,25 @@ class TestIngestionService:
                 assert PaperStatus.FAILED in statuses
 
     @pytest.mark.asyncio
+    async def test_process_failure_marks_job_failed(self, service, mock_storage, mock_parser):
+        paper_id = uuid4()
+        mock_paper = MagicMock()
+        mock_paper.id = paper_id
+        mock_paper.storage_key = "project/abc123.pdf"
+        mock_paper.sha256 = "abc123"
+        with patch.object(service._repo, "get_by_id", return_value=mock_paper):
+            with patch.object(service._repo, "update_status", new_callable=AsyncMock):
+                mock_parser.parse.side_effect = ValueError("corrupt PDF")
+                with pytest.raises(ValueError, match="corrupt PDF"):
+                    await service.process_paper(paper_id)
+        assert len(service._jobs) == 1
+        job = next(iter(service._jobs.values()))
+        assert job.status == "failed"
+        assert job.current_step == "failed"
+        assert job.error == "corrupt PDF"
+        assert job.completed_at is not None
+
+    @pytest.mark.asyncio
     async def test_ingest_upload_accepts_pdf_with_charset(self, service, mock_storage):
         project_id = uuid4()
         request = PaperIngestRequest(title="T")

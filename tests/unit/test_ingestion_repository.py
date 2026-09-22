@@ -87,9 +87,35 @@ class TestPaperRepository:
         result = await repository.get_by_sha256_for_project(sha256, project_id)
         assert result == mock_paper
         mock_session.execute.assert_called_once()
-        # project filter must be part of the query
-        sent = str(mock_session.execute.call_args.args[0])
-        assert "project_id" in sent and "sha256" in sent.lower() or True
+        # project filter must be part of the query, bound to the right values
+        stmt = mock_session.execute.call_args.args[0]
+        sent = str(stmt)
+        assert "project_id" in sent
+        assert "sha256" in sent.lower()
+        params = stmt.compile().params
+        assert params.get("sha256_1") == sha256
+        assert params.get("project_id_1") == project_id
+
+    @pytest.mark.asyncio
+    async def test_get_by_sha256_for_project_scoped(self, repository, mock_session):
+        # same sha under a different project must not match: returns None
+        sha256 = "abc123"
+        project_a = uuid4()
+        project_b = uuid4()
+        mock_paper = MagicMock(spec=Paper)
+
+        async def fake_execute(stmt):
+            params = stmt.compile().params
+            result = MagicMock()
+            if params.get("sha256_1") == sha256 and params.get("project_id_1") == project_a:
+                result.scalar_one_or_none.return_value = mock_paper
+            else:
+                result.scalar_one_or_none.return_value = None
+            return result
+
+        mock_session.execute.side_effect = fake_execute
+        assert await repository.get_by_sha256_for_project(sha256, project_a) is mock_paper
+        assert await repository.get_by_sha256_for_project(sha256, project_b) is None
 
     @pytest.mark.asyncio
     async def test_get_by_id(self, repository, mock_session):

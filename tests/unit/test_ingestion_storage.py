@@ -71,11 +71,13 @@ class TestStorageService:
         assert storage_service.file_exists("missing.pdf") is False
 
     def test_get_presigned_url(self, storage_service, mock_minio_client):
+        from datetime import timedelta
+
         mock_minio_client.presigned_get_object.return_value = "http://presigned.url"
         url = storage_service.get_presigned_url("test.pdf", expires=3600)
         assert url == "http://presigned.url"
         mock_minio_client.presigned_get_object.assert_called_once_with(
-            "papers", "test.pdf", expires=3600
+            "papers", "test.pdf", expires=timedelta(seconds=3600)
         )
 
 

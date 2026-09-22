@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
+from fastapi import Depends
+from packages.domain.database import get_db_session
 from packages.domain.models import PaperStatus
 from packages.ingestion.parser import PDFParser, create_parser
 from packages.ingestion.repository import PaperRepository
@@ -130,7 +132,13 @@ class IngestionService:
             self._jobs[job_id].current_step = "saving"
 
             await self._repo.save_parsed_paper(paper_id, parsed)
-        except Exception:
+        except Exception as e:
+            job = self._jobs.get(job_id)
+            if job is not None:
+                job.status = "failed"
+                job.current_step = "failed"
+                job.error = str(e)
+                job.completed_at = datetime.now(UTC)
             await self._repo.update_status(paper_id, PaperStatus.FAILED)
             raise
 
@@ -150,5 +158,7 @@ class IngestionService:
         return get_settings()
 
 
-def get_ingestion_service(session) -> IngestionService:  # type: ignore[no-untyped-def]
+def get_ingestion_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> IngestionService:
     return IngestionService(session)
