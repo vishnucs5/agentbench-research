@@ -4,18 +4,15 @@ import os
 import sys
 from logging.config import fileConfig
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from alembic import context
-from packages.domain.config import get_settings
 
 # Import our models
 from packages.domain.models import Base
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
-
-settings = get_settings()
 
 config = context.config
 
@@ -24,8 +21,20 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-def get_url():
-    return str(settings.database_url)
+settings = None
+
+
+def get_settings_lazy():  # type: ignore[no-untyped-def]
+    global settings
+    if settings is None:
+        from packages.domain.config import get_settings as _gs
+
+        settings = _gs()
+    return settings
+
+
+def get_url() -> str:
+    return str(get_settings_lazy().database_url)
 
 
 def run_migrations_offline() -> None:
@@ -49,7 +58,7 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    configuration = config.get_section(config.config_ini_section)
+    configuration = config.get_section(config.config_ini_section) or {}
     configuration["sqlalchemy.url"] = get_url()
     connectable = async_engine_from_config(
         configuration,

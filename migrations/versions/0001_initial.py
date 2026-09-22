@@ -20,14 +20,21 @@ def upgrade() -> None:
     op.create_table(
         'users',
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('email', sa.String(length=255), nullable=False),
         sa.Column('email_hash', sa.String(length=64), nullable=False),
+        sa.Column('hashed_password', sa.String(length=255), nullable=False),
+        sa.Column('full_name', sa.String(length=255), nullable=True),
         sa.Column('display_name', sa.String(length=255), nullable=False),
         sa.Column('role', sa.Enum('viewer', 'researcher', 'supervisor', 'admin', name='userrole'), nullable=False),
         sa.Column('status', sa.Enum('active', 'inactive', 'suspended', name='userstatus'), nullable=False),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
+        sa.Column('last_login', sa.DateTime(timezone=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('email'),
         sa.UniqueConstraint('email_hash')
     )
+    op.create_index('ix_users_email', 'users', ['email'], unique=True)
     op.create_index('ix_users_email_hash', 'users', ['email_hash'], unique=True)
 
     # Projects table
@@ -99,6 +106,25 @@ def upgrade() -> None:
     )
     op.create_index('ix_chunks_paper_id', 'chunks', ['paper_id'], unique=False)
 
+    # Research Runs table
+    op.create_table(
+        'research_runs',
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('project_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('request_text', sa.Text(), nullable=False),
+        sa.Column('plan_json', postgresql.JSON(astext_type=sa.Text()), nullable=False, server_default='{}'),
+        sa.Column('status', sa.Enum('created', 'planning', 'retrieving', 'extracting', 'synthesizing', 'verifying', 'completed', 'paused', 'failed', 'needs_review', 'cancelled', name='runstatus'), nullable=False, server_default='created'),
+        sa.Column('model_profile', sa.String(length=50), nullable=False),
+        sa.Column('started_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('error_code', sa.String(length=100), nullable=True),
+        sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('ix_research_runs_project_id', 'research_runs', ['project_id'], unique=False)
+
     # Claims table
     op.create_table(
         'claims',
@@ -131,25 +157,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id')
     )
     op.create_index('ix_evidence_links_claim_id', 'evidence_links', ['claim_id'], unique=False)
-
-    # Research Runs table
-    op.create_table(
-        'research_runs',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('project_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('request_text', sa.Text(), nullable=False),
-        sa.Column('plan_json', postgresql.JSON(astext_type=sa.Text()), nullable=False, server_default='{}'),
-        sa.Column('status', sa.Enum('created', 'planning', 'retrieving', 'extracting', 'synthesizing', 'verifying', 'completed', 'paused', 'failed', 'needs_review', 'cancelled', name='runstatus'), nullable=False, server_default='created'),
-        sa.Column('model_profile', sa.String(length=50), nullable=False),
-        sa.Column('started_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('error_code', sa.String(length=100), nullable=True),
-        sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index('ix_research_runs_project_id', 'research_runs', ['project_id'], unique=False)
 
     # Trace Events table
     op.create_table(
@@ -211,11 +218,15 @@ def downgrade() -> None:
     op.drop_table('evaluations')
     op.drop_table('benchmark_tasks')
     op.drop_table('trace_events')
-    op.drop_table('research_runs')
     op.drop_table('evidence_links')
     op.drop_table('claims')
+    op.drop_table('research_runs')
     op.drop_table('chunks')
     op.drop_table('paper_pages')
     op.drop_table('papers')
     op.drop_table('projects')
     op.drop_table('users')
+    # Drop Postgres enum types (postgres-only; skip on sqlite for portability).
+    _conn = op.get_bind()
+    if _conn is None or _conn.dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS userrole; DROP TYPE IF EXISTS userstatus; DROP TYPE IF EXISTS paperstatus; DROP TYPE IF EXISTS claimstatus; DROP TYPE IF EXISTS supporttype; DROP TYPE IF EXISTS runstatus; DROP TYPE IF EXISTS eventtype;")
