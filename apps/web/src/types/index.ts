@@ -123,3 +123,61 @@ export interface PaginatedRuns {
   page_size: number
   total_pages: number
 }
+
+// Plagiarism Types
+export type PlagiarismCheckStatus = "pending" | "processing" | "completed" | "failed"
+
+export type PlagiarismSourceType = "internal" | "external_api"
+
+export interface PlagiarismMatch {
+  id: string
+  source_type: PlagiarismSourceType
+  matched_text: string
+  source_text: string
+  similarity_score: number
+  confidence_score: number
+  source_document_id?: string | null
+  source_document_title?: string | null
+  source_url?: string | null
+  source_location?: string | null
+  match_start_offset?: number | null
+  match_end_offset?: number | null
+  created_at: string
+}
+
+export interface PlagiarismCheck {
+  id: string
+  user_id: string
+  project_id?: string | null
+  source_filename?: string | null
+  source_mime_type?: string | null
+  source_size_bytes?: number | null
+  status: PlagiarismCheckStatus
+  overall_similarity: number
+  originality_score: number
+  total_matches: number
+  provider_used: string
+  error_message?: string | null
+  consented_to_store: boolean
+  created_at: string
+  completed_at?: string | null
+}
+
+export interface PlagiarismReport {
+  check: PlagiarismCheck
+  matches: PlagiarismMatch[]
+  summary: string
+}
+
+export interface PlagiarismListResponse {
+  checks: PlagiarismCheck[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface SupportedFileTypes {
+  mime_types: string[]
+  extensions: string[]
+  max_size_mb: number
+}

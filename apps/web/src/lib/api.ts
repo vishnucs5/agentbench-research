@@ -1,4 +1,13 @@
-import type { Project, RunTrace, PaginatedRuns, ProjectStats } from "@/types"
+import type {
+  Project,
+  RunTrace,
+  PaginatedRuns,
+  ProjectStats,
+  PlagiarismCheck,
+  PlagiarismReport,
+  PlagiarismListResponse,
+  SupportedFileTypes,
+} from "@/types"
 
 const API_BASE = ""
 
@@ -19,8 +28,9 @@ export async function api<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const token = getToken()
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(options.headers as Record<string, string>),
   }
   if (token) headers["Authorization"] = `Bearer ${token}`
@@ -30,6 +40,11 @@ export async function api<T>(
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.detail || `API error ${res.status}`)
+  }
+
+  // Handle 204 No Content
+  if (res.status === 204) {
+    return undefined as unknown as T
   }
 
   return res.json()
@@ -78,6 +93,46 @@ export const traceApi = {
   listRuns: (projectId: string) =>
     api<PaginatedRuns>(`/v1/dashboard/projects/${projectId}/runs`),
   getRun: (runId: string) => api<RunTrace>(`/v1/dashboard/runs/${runId}/trace`),
+}
+
+// Plagiarism
+export const plagiarismApi = {
+  checkText: (data: {
+    text: string
+    project_id?: string | null
+    threshold?: number | null
+    consented_to_store?: boolean
+  }) =>
+    api<PlagiarismCheck>("/v1/plagiarism/check/text", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  checkFile: (formData: FormData) =>
+    api<PlagiarismCheck>("/v1/plagiarism/check/file", {
+      method: "POST",
+      body: formData,
+    }),
+
+  listChecks: (params?: { page?: number; page_size?: number; status?: string | null }) => {
+    const query = new URLSearchParams()
+    if (params?.page) query.set("page", params.page.toString())
+    if (params?.page_size) query.set("page_size", params.page_size.toString())
+    if (params?.status) query.set("status", params.status)
+    const qs = query.toString()
+    return api<PlagiarismListResponse>(`/v1/plagiarism/checks${qs ? `?${qs}` : ""}`)
+  },
+
+  getReport: (checkId: string) =>
+    api<PlagiarismReport>(`/v1/plagiarism/checks/${checkId}`),
+
+  deleteCheck: (checkId: string) =>
+    api<void>(`/v1/plagiarism/checks/${checkId}`, {
+      method: "DELETE",
+    }),
+
+  getSupportedTypes: () =>
+    api<SupportedFileTypes>("/v1/plagiarism/supported-types"),
 }
 
 // Health
