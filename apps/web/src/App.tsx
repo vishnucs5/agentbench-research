@@ -11,6 +11,7 @@ import Overview from "@/pages/Overview"
 import Projects from "@/pages/Projects"
 import TraceReplay from "@/pages/TraceReplay"
 import Settings from "@/pages/Settings"
+import PlagiarismChecker from "@/pages/PlagiarismChecker"
 
 function AuthGate() {
   const { isAuthenticated } = useAuth()
@@ -25,6 +26,9 @@ function AuthGate() {
             <Route path="/projects" element={<Projects />} />
             <Route path="/trace" element={<TraceReplay />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/dashboard/plagiarism-checker" element={<PlagiarismChecker />} />
+            <Route path="/plagiarism" element={<Navigate to="/dashboard/plagiarism-checker" replace />} />
+            <Route path="/plagiarism-checker" element={<Navigate to="/dashboard/plagiarism-checker" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

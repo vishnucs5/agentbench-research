@@ -31,11 +31,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/v1/auth/login",
             "/v1/auth/register",
             "/v1/auth/refresh",
+            "/plagiarism",
+            "/plagiarism-checker",
+            "/dashboard/plagiarism-checker",
+            "/v1/plagiarism/supported-types",
+            "/dashboard",
+            "/app",
+            "/ui",
+            "/projects",
+            "/trace",
+            "/settings",
         }
 
     async def _get_cache(self) -> Any:
         if self._cache is None:
             from packages.cache.redis import RedisCache
+
             self._cache = RedisCache()
             await self._cache.connect()
         return self._cache
@@ -90,7 +101,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         if request.url.path in self.exempt_paths or request.url.path.startswith(
-            ("/static", "/assets", "/openapi.json")
+            ("/static", "/assets", "/openapi.json", "/projects/", "/trace/")
         ):
             return await call_next(request)
 
@@ -132,9 +143,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                             "id": str(user.id),
                             "email": user.email,
                             "full_name": user.full_name,
-                            "role": user.role.value
-                            if hasattr(user.role, "value")
-                            else user.role,
+                            "role": user.role.value if hasattr(user.role, "value") else user.role,
                             "is_active": user.is_active,
                         },
                         ttl=300,
@@ -169,6 +178,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def _get_cache(self):
         if self._cache is None:
             from packages.cache.redis import RedisCache
+
             self._cache = RedisCache()
             await self._cache.connect()
         return self._cache
@@ -224,7 +234,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+        )
         return response
 
 
@@ -243,9 +255,7 @@ async def _get_demo_user() -> User | None:
     async with get_session() as session:
         from sqlalchemy import select
 
-        result = await session.execute(
-            select(User).where(User.email == settings.demo_user_email)
-        )
+        result = await session.execute(select(User).where(User.email == settings.demo_user_email))
         return result.scalar_one_or_none()
 
 
@@ -277,6 +287,7 @@ async def get_current_user(
     async with get_session() as session:
         from packages.domain.models import User
         from sqlalchemy import select
+
         result = await session.execute(select(User).where(User.id == payload.user_id))
         user = result.scalar_one_or_none()
         if not user or not user.is_active:
@@ -297,6 +308,7 @@ def require_permission(permission: Permission):
                 detail=f"Permission denied: {permission.value} required",
             )
         return user
+
     return checker
 
 
@@ -308,6 +320,7 @@ def require_role(role: UserRole):
                 detail=f"Role {role.value} or admin required",
             )
         return user
+
     return checker
 
 
@@ -323,5 +336,6 @@ async def get_optional_user(
     async with get_session() as session:
         from packages.domain.models import User
         from sqlalchemy import select
+
         result = await session.execute(select(User).where(User.id == payload.user_id))
         return result.scalar_one_or_none()

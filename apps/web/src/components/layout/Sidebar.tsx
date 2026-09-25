@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   FolderOpen,
   GitBranch,
+  FileSearch,
   Settings,
 } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
@@ -17,6 +18,7 @@ const workspaceNav: NavItem[] = [
   { label: "Overview", path: "/", icon: <LayoutDashboard size={18} /> },
   { label: "Projects", path: "/projects", icon: <FolderOpen size={18} /> },
   { label: "Trace Replay", path: "/trace", icon: <GitBranch size={18} /> },
+  { label: "Plagiarism Checker", path: "/dashboard/plagiarism-checker", icon: <FileSearch size={18} /> },
 ]
 
 const systemNav: NavItem[] = [
