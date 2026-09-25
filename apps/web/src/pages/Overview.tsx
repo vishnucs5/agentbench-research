@@ -1,9 +1,12 @@
+import { useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import MetricCard from "@/components/dashboard/MetricCard"
 import StatusBadge from "@/components/dashboard/StatusBadge"
 import EmptyState from "@/components/dashboard/EmptyState"
 import PipelineStepper from "@/components/dashboard/PipelineStepper"
+import PlagiarismWidget from "@/components/dashboard/PlagiarismWidget"
+import PlagiarismCheckerPanel from "@/components/plagiarism/PlagiarismCheckerPanel"
 import { useProject } from "@/contexts/ProjectContext"
 import { useStats } from "@/hooks/use-stats"
 import { MOCK_PIPELINE } from "@/lib/mock-data"
@@ -30,6 +33,7 @@ const PROVIDERS = [
 export default function Overview() {
   const { selectedProject } = useProject()
   const { data: stats, isLoading } = useStats(selectedProject?.id ?? null)
+  const checkerRef = useRef<HTMLDivElement>(null)
 
   return (
     <div className="p-6 space-y-8">
@@ -172,6 +176,30 @@ export default function Overview() {
           />
         )}
       </Card>
+
+      {/* Plagiarism Summary Widget */}
+      <PlagiarismWidget
+        onOpenEmbedded={() => {
+          checkerRef.current?.scrollIntoView({ behavior: "smooth" })
+        }}
+      />
+
+      {/* Embedded Plagiarism Checker Section */}
+      <div ref={checkerRef} className="space-y-4 pt-4 border-t border-[#1E293B]">
+        <div className="space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#CFFF4B]">
+            PLAGIARISM & SIMILARITY CHECKER
+          </p>
+          <h2 className="text-xl font-bold text-white">
+            Instant Similarity Analysis
+          </h2>
+          <p className="text-xs text-[#64748B]">
+            Check research text or upload files directly within the dashboard.
+          </p>
+        </div>
+
+        <PlagiarismCheckerPanel embedded />
+      </div>
     </div>
   )
 }
