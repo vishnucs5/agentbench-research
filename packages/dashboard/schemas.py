@@ -55,7 +55,7 @@ class RunTraceResponse(BaseModel):
     project_id: UUID
     user_id: UUID
     request_text: str
-    plan: list[dict[str, Any]]
+    plan: list[dict[str, Any]] | dict[str, Any]
     status: RunStatus
     model_profile: str
     started_at: datetime

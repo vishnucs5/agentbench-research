@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -23,15 +24,21 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { useProjects, useCreateProject } from "@/hooks/use-projects"
+import { useProject } from "@/contexts/ProjectContext"
 import Pagination from "@/components/dashboard/Pagination"
-import { FolderOpen, FolderSearch } from "lucide-react"
+import { UploadPaperDialog } from "@/components/papers/UploadPaperDialog"
+import { FolderOpen, FolderSearch, FileUp } from "lucide-react"
+import type { Project } from "@/types"
 
 const ITEMS_PER_PAGE = 10
 
 export default function Projects() {
   const { data: projects, isLoading } = useProjects()
   const createProject = useCreateProject()
+  const { setSelectedProject } = useProject()
+  const navigate = useNavigate()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [form, setForm] = useState({
     name: "",
@@ -57,6 +64,11 @@ export default function Projects() {
         variant: "destructive",
       })
     }
+  }
+
+  function handleOpen(project: Project) {
+    setSelectedProject(project)
+    navigate("/")
   }
 
   function formatDate(iso?: string) {
@@ -88,12 +100,22 @@ export default function Projects() {
             Workspaces with retention · Domain: network-intrusion-detection
           </p>
         </div>
-        <Button
-          className="bg-[#CFFF4B] text-black hover:bg-[#CFFF4B]/90 font-semibold"
-          onClick={() => setDialogOpen(true)}
-        >
-          + New Project
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="border-[#1E293B] text-white hover:bg-[#1E293B] text-xs font-semibold"
+            onClick={() => setUploadOpen(true)}
+          >
+            <FileUp className="h-4 w-4 mr-1.5 text-[#CFFF4B]" />
+            Upload PDF
+          </Button>
+          <Button
+            className="bg-[#CFFF4B] text-black hover:bg-[#CFFF4B]/90 font-semibold text-xs"
+            onClick={() => setDialogOpen(true)}
+          >
+            + New Project
+          </Button>
+        </div>
       </div>
 
       {/* Loading State */}
@@ -170,13 +192,28 @@ export default function Projects() {
                     {formatDate(project.created_at)}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-[#CFFF4B] hover:text-[#CFFF4B] hover:bg-[#CFFF4B]/10"
-                    >
-                      Open
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-[#94A3B8] hover:text-white"
+                        onClick={() => {
+                          setSelectedProject(project)
+                          setUploadOpen(true)
+                        }}
+                      >
+                        <FileUp className="h-3.5 w-3.5 mr-1 text-[#CFFF4B]" />
+                        Upload
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-[#CFFF4B] hover:text-[#CFFF4B] hover:bg-[#CFFF4B]/10 font-semibold text-xs"
+                        onClick={() => handleOpen(project)}
+                      >
+                        Open
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -264,6 +301,12 @@ export default function Projects() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Upload Paper Modal */}
+      <UploadPaperDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+      />
     </div>
   )
 }

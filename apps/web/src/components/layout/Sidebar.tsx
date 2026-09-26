@@ -5,6 +5,8 @@ import {
   GitBranch,
   FileSearch,
   Settings,
+  Layers,
+  ExternalLink,
 } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 
@@ -76,6 +78,14 @@ export default function Sidebar() {
           {systemNav.map((item) => (
             <SidebarLink key={item.path} item={item} />
           ))}
+          <a
+            href="/dashboard"
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-panel-light hover:text-foreground transition-colors"
+          >
+            <Layers size={18} />
+            <span>Classic Workspace</span>
+            <ExternalLink size={12} className="ml-auto opacity-60" />
+          </a>
         </div>
       </nav>
 

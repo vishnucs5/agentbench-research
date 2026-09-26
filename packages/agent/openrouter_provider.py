@@ -54,8 +54,14 @@ class OpenRouterProvider(ModelProvider):
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
         if response_format is not None:
-            payload["response_format"] = {"type": "json_schema", "json_schema": response_format.model_json_schema()}
-            payload["strict"] = True
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": getattr(response_format, "__name__", "response"),
+                    "schema": response_format.model_json_schema(),
+                    "strict": True,
+                },
+            }
 
         response = await self._client.post("/chat/completions", json=payload)
         response.raise_for_status()

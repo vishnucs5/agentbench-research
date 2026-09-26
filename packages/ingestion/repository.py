@@ -44,9 +44,7 @@ class PaperRepository:
         return paper
 
     async def get_by_sha256(self, sha256: str) -> Paper | None:
-        result = await self._session.execute(
-            select(Paper).where(Paper.sha256 == sha256)
-        )
+        result = await self._session.execute(select(Paper).where(Paper.sha256 == sha256))
         return result.scalar_one_or_none()
 
     async def get_by_sha256_for_project(self, sha256: str, project_id: UUID) -> Paper | None:
@@ -57,9 +55,7 @@ class PaperRepository:
 
     async def get_by_id(self, paper_id: UUID) -> Paper | None:
         result = await self._session.execute(
-            select(Paper)
-            .options(selectinload(Paper.pages))
-            .where(Paper.id == paper_id)
+            select(Paper).options(selectinload(Paper.pages)).where(Paper.id == paper_id)
         )
         return result.scalar_one_or_none()
 

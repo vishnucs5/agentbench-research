@@ -81,7 +81,9 @@ class TestChunkRequest:
         assert req.preserve_sections is True
 
     def test_chunk_request_custom(self):
-        req = ChunkRequest(paper_id=uuid.uuid4(), chunk_size=256, chunk_overlap=30, preserve_sections=False)
+        req = ChunkRequest(
+            paper_id=uuid.uuid4(), chunk_size=256, chunk_overlap=30, preserve_sections=False
+        )
         assert req.chunk_size == 256
         assert req.chunk_overlap == 30
         assert req.preserve_sections is False

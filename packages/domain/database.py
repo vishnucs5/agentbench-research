@@ -17,13 +17,31 @@ use_sqlite = database_url.startswith("sqlite")
 # Only default to sqlite when DATABASE_URL is unset (handled by Settings default).
 if "sqlite" in database_url:
     engine = create_async_engine(
-        database_url, echo=False, poolclass=NullPool,
+        database_url,
+        echo=False,
+        poolclass=NullPool,
         connect_args={"check_same_thread": False},
     )
+
+    from sqlalchemy import event
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _register_sqlite_functions(dbapi_connection, connection_record):
+        import datetime
+
+        try:
+            dbapi_connection.create_function(
+                "now", 0, lambda: datetime.datetime.utcnow().isoformat()
+            )
+        except Exception:
+            pass
 else:
     engine = create_async_engine(
-        database_url, echo=settings.is_development,
-        pool_size=10, max_overflow=20, pool_pre_ping=True,
+        database_url,
+        echo=settings.is_development,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
     )
 
 async_session_factory = async_sessionmaker(

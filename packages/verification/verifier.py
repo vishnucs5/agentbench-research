@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from typing import Any
+from typing import Annotated
 
+from fastapi import Depends
 from packages.agent.factory import get_provider
-from packages.extraction.service import ExtractionService
-from packages.retrieval.service import RetrievalService
+from packages.extraction.service import ExtractionService, get_extraction_service
+from packages.retrieval.service import RetrievalService, get_retrieval_service
 from packages.verification.schemas import (
     AtomicClaim,
     AtomicClaimStatus,
@@ -47,6 +48,9 @@ class CitationVerificationService:
             "i think",
             "i believe",
             "in my opinion",
+            "we think",
+            "we believe",
+            "in our opinion",
             "it seems",
             "appears to",
             "suggests that",
@@ -264,13 +268,10 @@ _verification_service: CitationVerificationService | None = None
 
 
 def get_citation_verification_service(
-    extraction_service: Any,
-    retrieval_service: Any,
-    provider_name: str | None = None,
+    extraction_service: Annotated[ExtractionService, Depends(get_extraction_service)],
+    retrieval_service: Annotated[RetrievalService, Depends(get_retrieval_service)],
 ) -> CitationVerificationService:
     global _verification_service
     if _verification_service is None:
-        _verification_service = CitationVerificationService(
-            extraction_service, retrieval_service, provider_name
-        )
+        _verification_service = CitationVerificationService(extraction_service, retrieval_service)
     return _verification_service

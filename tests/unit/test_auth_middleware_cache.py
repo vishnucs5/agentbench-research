@@ -1,4 +1,5 @@
 """Tests for AuthMiddleware user session caching."""
+
 from __future__ import annotations
 
 import uuid
@@ -54,7 +55,11 @@ class TestAuthMiddlewareCaching:
             mock_get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_get_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            with patch("packages.security.middleware.AuthMiddleware._get_cache", new_callable=AsyncMock, return_value=mock_cache):
+            with patch(
+                "packages.security.middleware.AuthMiddleware._get_cache",
+                new_callable=AsyncMock,
+                return_value=mock_cache,
+            ):
                 response = client.get(
                     "/protected",
                     headers={"Authorization": "Bearer fake-token"},
@@ -102,7 +107,11 @@ class TestAuthMiddlewareCaching:
             mock_get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_get_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            with patch("packages.security.middleware.AuthMiddleware._get_cache", new_callable=AsyncMock, return_value=mock_cache):
+            with patch(
+                "packages.security.middleware.AuthMiddleware._get_cache",
+                new_callable=AsyncMock,
+                return_value=mock_cache,
+            ):
                 response = client.get(
                     "/protected",
                     headers={"Authorization": "Bearer fake-token"},
@@ -133,7 +142,11 @@ class TestAuthMiddlewareCaching:
             mock_get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_get_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            with patch("packages.security.middleware.AuthMiddleware._get_cache", new_callable=AsyncMock, return_value=mock_cache):
+            with patch(
+                "packages.security.middleware.AuthMiddleware._get_cache",
+                new_callable=AsyncMock,
+                return_value=mock_cache,
+            ):
                 response = client.get(
                     "/protected",
                     headers={"Authorization": "Bearer fake-token"},
@@ -164,7 +177,11 @@ class TestAuthMiddlewareCaching:
             mock_get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_get_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            with patch("packages.security.middleware.AuthMiddleware._get_cache", new_callable=AsyncMock, return_value=mock_cache):
+            with patch(
+                "packages.security.middleware.AuthMiddleware._get_cache",
+                new_callable=AsyncMock,
+                return_value=mock_cache,
+            ):
                 response = client.get(
                     "/protected",
                     headers={"Authorization": "Bearer fake-token"},
@@ -211,7 +228,11 @@ class TestAuthMiddlewareCaching:
             mock_get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_get_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            with patch("packages.security.middleware.AuthMiddleware._get_cache", new_callable=AsyncMock, return_value=mock_cache):
+            with patch(
+                "packages.security.middleware.AuthMiddleware._get_cache",
+                new_callable=AsyncMock,
+                return_value=mock_cache,
+            ):
                 response = client.get(
                     "/protected",
                     headers={"Authorization": "Bearer fake-token"},

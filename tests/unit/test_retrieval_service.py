@@ -75,8 +75,12 @@ def sample_parsed_paper():
 
 class TestRetrievalService:
     @pytest.mark.asyncio
-    async def test_index_paper(self, service, mock_chunker, mock_embedder, mock_qdrant, sample_parsed_paper):
-        result = await service.index_paper(sample_parsed_paper, "paper1", "project1", {"year": 2024})
+    async def test_index_paper(
+        self, service, mock_chunker, mock_embedder, mock_qdrant, sample_parsed_paper
+    ):
+        result = await service.index_paper(
+            sample_parsed_paper, "paper1", "project1", {"year": 2024}
+        )
 
         assert result["chunk_count"] == 2
         assert result["embedded_count"] == 2
@@ -138,7 +142,9 @@ class TestRetrievalService:
         assert call_args is not None
         # filters is the 4th positional argument (query, embedding, top_k, filters)
         # args order: query_text, query_embedding, top_k, bm25_weight, semantic_weight, filters
-        filters = call_args.args[5] if len(call_args.args) > 5 else call_args.kwargs.get("filters", {})
+        filters = (
+            call_args.args[5] if len(call_args.args) > 5 else call_args.kwargs.get("filters", {})
+        )
         assert "project_id" in filters
         assert filters.get("year_from") == 2020
         assert filters.get("year_to") == 2024

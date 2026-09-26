@@ -4,6 +4,7 @@ Revision ID: 0003
 Revises: 0002
 Create Date: 2026-09-21
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -67,21 +68,32 @@ def upgrade() -> None:
 
     run_rows = connection.execute(sa.text("SELECT id FROM research_runs")).fetchall()
     for (run_id,) in run_rows:
-        total = connection.execute(
-            sa.text("SELECT COALESCE(SUM(latency_ms), 0) FROM trace_events WHERE run_id = :rid"),
-            {"rid": run_id},
-        ).scalar() or 0
-        tool_calls = connection.execute(
-            sa.text(
-                "SELECT COUNT(*) FROM trace_events "
-                "WHERE run_id = :rid AND event_type = 'tool_call'"
-            ),
-            {"rid": run_id},
-        ).scalar() or 0
-        trace_count = connection.execute(
-            sa.text("SELECT COUNT(*) FROM trace_events WHERE run_id = :rid"),
-            {"rid": run_id},
-        ).scalar() or 0
+        total = (
+            connection.execute(
+                sa.text(
+                    "SELECT COALESCE(SUM(latency_ms), 0) FROM trace_events WHERE run_id = :rid"
+                ),
+                {"rid": run_id},
+            ).scalar()
+            or 0
+        )
+        tool_calls = (
+            connection.execute(
+                sa.text(
+                    "SELECT COUNT(*) FROM trace_events "
+                    "WHERE run_id = :rid AND event_type = 'tool_call'"
+                ),
+                {"rid": run_id},
+            ).scalar()
+            or 0
+        )
+        trace_count = (
+            connection.execute(
+                sa.text("SELECT COUNT(*) FROM trace_events WHERE run_id = :rid"),
+                {"rid": run_id},
+            ).scalar()
+            or 0
+        )
         ev_rows = connection.execute(
             sa.text("SELECT evidence_ids FROM trace_events WHERE run_id = :rid"),
             {"rid": run_id},

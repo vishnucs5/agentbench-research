@@ -28,7 +28,9 @@ class TraceReplayService:
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def get_run_trace(self, run_id: UUID, trace_filter: TraceFilter | None = None) -> RunTraceResponse | None:
+    async def get_run_trace(
+        self, run_id: UUID, trace_filter: TraceFilter | None = None
+    ) -> RunTraceResponse | None:
         run = await self._get_run_with_events(run_id)
         if not run:
             return None
@@ -77,7 +79,9 @@ class TraceReplayService:
             evidence_ids=evidence_ids,
         )
 
-    def _apply_trace_filter(self, events: list[TraceEvent], trace_filter: TraceFilter) -> list[TraceEvent]:
+    def _apply_trace_filter(
+        self, events: list[TraceEvent], trace_filter: TraceFilter
+    ) -> list[TraceEvent]:
         filtered = events
 
         if trace_filter.event_types:
@@ -97,12 +101,19 @@ class TraceReplayService:
 
         return filtered
 
-    def _extract_budgets(self, plan_json: dict[str, Any]) -> dict[str, Any]:
+    def _extract_budgets(self, plan_json: Any) -> dict[str, Any]:
+        if isinstance(plan_json, dict):
+            return {
+                "max_papers": plan_json.get("max_papers"),
+                "max_tool_calls": plan_json.get("max_tool_calls"),
+                "deadline_seconds": plan_json.get("deadline_seconds"),
+                "token_budget": plan_json.get("token_budget"),
+            }
         return {
-            "max_papers": plan_json.get("max_papers"),
-            "max_tool_calls": plan_json.get("max_tool_calls"),
-            "deadline_seconds": plan_json.get("deadline_seconds"),
-            "token_budget": plan_json.get("token_budget"),
+            "max_papers": None,
+            "max_tool_calls": None,
+            "deadline_seconds": None,
+            "token_budget": None,
         }
 
     async def _get_run_with_events(self, run_id: UUID) -> ResearchRun | None:
@@ -115,6 +126,7 @@ class TraceReplayService:
 
     async def update_run_status(self, run_id: UUID, status: str) -> None:
         from apps.api.main import app
+
         ws_manager = app.state.ws_manager
 
         run = await self._get_run_with_events(run_id)
@@ -174,7 +186,9 @@ class TraceReplayService:
             RunListItem(
                 run_id=r.id,
                 project_id=r.project_id,
-                request_text=r.request_text[:100] + "..." if len(r.request_text or "") > 100 else (r.request_text or ""),
+                request_text=r.request_text[:100] + "..."
+                if len(r.request_text or "") > 100
+                else (r.request_text or ""),
                 status=r.status,
                 model_profile=r.model_profile or "unknown",
                 started_at=r.started_at,
@@ -197,8 +211,12 @@ class TraceReplayService:
     async def get_project_stats(self, project_id: UUID) -> ProjectDashboardStats:
         stats_query = select(
             func.count(ResearchRun.id).label("total_runs"),
-            func.sum(case((ResearchRun.status == RunStatus.COMPLETED, 1), else_=0)).label("completed_runs"),
-            func.sum(case((ResearchRun.status == RunStatus.FAILED, 1), else_=0)).label("failed_runs"),
+            func.sum(case((ResearchRun.status == RunStatus.COMPLETED, 1), else_=0)).label(
+                "completed_runs"
+            ),
+            func.sum(case((ResearchRun.status == RunStatus.FAILED, 1), else_=0)).label(
+                "failed_runs"
+            ),
             func.sum(ResearchRun.total_latency_ms).label("total_latency_sum"),
             func.sum(ResearchRun.evidence_count).label("total_evidence"),
         ).where(ResearchRun.project_id == project_id)
@@ -206,17 +224,20 @@ class TraceReplayService:
         result = await self._session.execute(stats_query)
         stats = result.one_or_none()
 
+        # NOTE: aggregate SUM() over an empty set returns NULL, not 0.
         total_runs = stats.total_runs if stats else 0
-        completed_runs = stats.completed_runs if stats else 0
-        failed_runs = stats.failed_runs if stats else 0
-        total_latency = stats.total_latency_sum or 0
-        total_evidence = stats.total_evidence or 0
+        completed_runs = (stats.completed_runs if stats else None) or 0
+        failed_runs = (stats.failed_runs if stats else None) or 0
+        total_latency = (stats.total_latency_sum if stats else None) or 0
+        total_evidence = (stats.total_evidence if stats else None) or 0
         avg_latency = total_latency / total_runs if total_runs > 0 else 0.0
 
         project_result = await self._session.execute(
             select(Project.name).where(Project.id == project_id)
         )
-        project_name = project_result.scalar_one()
+        project_name = project_result.scalar_one_or_none()
+        if project_name is None:
+            raise ValueError(f"Project {project_id} not found")
 
         recent_query = (
             select(ResearchRun)
@@ -229,7 +250,9 @@ class TraceReplayService:
             RunListItem(
                 run_id=r.id,
                 project_id=r.project_id,
-                request_text=r.request_text[:100] + "..." if len(r.request_text or "") > 100 else (r.request_text or ""),
+                request_text=r.request_text[:100] + "..."
+                if len(r.request_text or "") > 100
+                else (r.request_text or ""),
                 status=r.status,
                 model_profile=r.model_profile or "unknown",
                 started_at=r.started_at,

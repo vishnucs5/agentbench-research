@@ -8,19 +8,33 @@ interface Phase {
 
 interface PipelineStepperProps {
   phases: Phase[]
+  selectedPhase?: number
+  onSelectPhase?: (phase: number) => void
 }
 
-export default function PipelineStepper({ phases }: PipelineStepperProps) {
+export default function PipelineStepper({
+  phases,
+  selectedPhase,
+  onSelectPhase,
+}: PipelineStepperProps) {
   return (
     <div className="flex items-start gap-0">
       {phases.map((phase, i) => {
         const isDone = phase.status === "done"
         const isActive = phase.status === "active"
         const isPending = phase.status === "pending"
+        const isSelected = selectedPhase === phase.phase
 
         return (
           <div key={phase.phase} className="flex items-center">
-            <div className="flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => onSelectPhase?.(phase.phase)}
+              className={cn(
+                "flex flex-col items-center group transition cursor-pointer p-1 rounded-lg",
+                isSelected && "bg-[#1E293B]/60 ring-1 ring-[#CFFF4B]/40"
+              )}
+            >
               {/* Dot */}
               <div
                 className={cn(
@@ -28,7 +42,8 @@ export default function PipelineStepper({ phases }: PipelineStepperProps) {
                   isDone && "border-[#CFFF4B] bg-[#CFFF4B]",
                   isActive &&
                     "border-[#CFFF4B] bg-[#CFFF4B] shadow-[0_0_12px_rgba(207,255,75,0.5)]",
-                  isPending && "border-[#64748B] bg-transparent"
+                  isPending && "border-[#64748B] bg-transparent group-hover:border-slate-400",
+                  isSelected && "ring-2 ring-white ring-offset-2 ring-offset-[#101A26]"
                 )}
               >
                 {isActive && (
@@ -38,15 +53,16 @@ export default function PipelineStepper({ phases }: PipelineStepperProps) {
               {/* Label */}
               <span
                 className={cn(
-                  "mt-2 whitespace-nowrap text-[10px] font-medium uppercase tracking-wider",
+                  "mt-2 whitespace-nowrap text-[10px] font-medium uppercase tracking-wider group-hover:text-white transition",
                   isDone && "text-[#CFFF4B]",
                   isActive && "text-[#CFFF4B]",
-                  isPending && "text-[#64748B]"
+                  isPending && "text-[#64748B]",
+                  isSelected && "text-white font-bold"
                 )}
               >
                 {phase.name}
               </span>
-            </div>
+            </button>
             {/* Connector line */}
             {i < phases.length - 1 && (
               <div

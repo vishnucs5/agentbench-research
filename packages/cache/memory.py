@@ -1,4 +1,5 @@
 """In-memory cache fallback when Redis is unavailable."""
+
 from __future__ import annotations
 
 import fnmatch

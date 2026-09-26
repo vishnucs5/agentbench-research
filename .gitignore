@@ -73,7 +73,12 @@ logs/
 
 # env secrets - never commit
 .env
+*.db
 agentbench.db
+test.db
+test_paper.pdf
+test_db.py
+sample_research.py
 data/papers/*
 data/bm25_index.pkl
 data/benchmark/*.json

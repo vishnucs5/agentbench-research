@@ -9,6 +9,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 
+def _coerce_status(status: ClaimStatus) -> ClaimStatus:
+    """Accept equivalent ClaimStatus enums (e.g. schemas vs models)."""
+    if isinstance(status, ClaimStatus):
+        return status
+    return ClaimStatus(getattr(status, "value", status))
+
+
+def _coerce_support(support_type: SupportType) -> SupportType:
+    if isinstance(support_type, SupportType):
+        return support_type
+    return SupportType(getattr(support_type, "value", support_type))
+
+
 class ClaimRepository:
     def __init__(self, session: AsyncSession):
         self._session = session
@@ -29,7 +42,7 @@ class ClaimRepository:
             claim_text=claim_text,
             normalized_value_json=normalized_value,
             confidence=confidence,
-            status=status,
+            status=_coerce_status(status),
             created_by_run_id=created_by_run_id,
         )
         self._session.add(claim)
@@ -38,9 +51,7 @@ class ClaimRepository:
 
     async def get_by_id(self, claim_id: UUID) -> Claim | None:
         result = await self._session.execute(
-            select(Claim)
-            .options(selectinload(Claim.evidence_links))
-            .where(Claim.id == claim_id)
+            select(Claim).options(selectinload(Claim.evidence_links)).where(Claim.id == claim_id)
         )
         return result.scalar_one_or_none()
 
@@ -65,8 +76,7 @@ class ClaimRepository:
         claim_type: str,
     ) -> Claim | None:
         result = await self._session.execute(
-            select(Claim)
-            .where(Claim.paper_id == paper_id, Claim.claim_type == claim_type)
+            select(Claim).where(Claim.paper_id == paper_id, Claim.claim_type == claim_type)
         )
         return result.scalar_one_or_none()
 
@@ -89,7 +99,7 @@ class ClaimRepository:
         if confidence is not None:
             claim.confidence = confidence
         if status is not None:
-            claim.status = status
+            claim.status = _coerce_status(status)
 
         await self._session.flush()
         return claim
@@ -106,7 +116,7 @@ class ClaimRepository:
             claim_id=claim_id,
             chunk_id=chunk_id,
             page_number=page_number,
-            support_type=support_type,
+            support_type=_coerce_support(support_type),
             match_score=match_score,
         )
         self._session.add(evidence_link)

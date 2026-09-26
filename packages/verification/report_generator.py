@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from packages.extraction.service import ExtractionService
-from packages.synthesis.service import SynthesisService
+from fastapi import Depends
+from packages.extraction.service import ExtractionService, get_extraction_service
+from packages.synthesis.service import SynthesisService, get_synthesis_service
 from packages.verification.schemas import (
     BibliographyEntry,
     ReportRequest,
@@ -13,7 +14,10 @@ from packages.verification.schemas import (
     ReportSection,
     VerificationRequest,
 )
-from packages.verification.verifier import CitationVerificationService
+from packages.verification.verifier import (
+    CitationVerificationService,
+    get_citation_verification_service,
+)
 
 
 class ReportGenerationService:
@@ -357,9 +361,11 @@ _report_generation_service: Any | None = None
 
 
 def get_report_generation_service(
-    extraction_service: Any,
-    synthesis_service: Any,
-    verification_service: Any,
+    extraction_service: Annotated[ExtractionService, Depends(get_extraction_service)],
+    synthesis_service: Annotated[SynthesisService, Depends(get_synthesis_service)],
+    verification_service: Annotated[
+        CitationVerificationService, Depends(get_citation_verification_service)
+    ],
 ) -> ReportGenerationService:
     global _report_generation_service
     if _report_generation_service is None:

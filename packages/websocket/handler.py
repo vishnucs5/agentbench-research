@@ -1,4 +1,5 @@
 """WebSocket endpoint handler."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect

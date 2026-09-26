@@ -29,6 +29,8 @@ def create_provider(
         from .openrouter_provider import OpenRouterProvider
 
         if not settings.openrouter_api_key:
+            if settings.is_development:
+                return MockProvider()
             raise ValueError("OPENROUTER_API_KEY not configured")
         return OpenRouterProvider(
             api_key=settings.openrouter_api_key,

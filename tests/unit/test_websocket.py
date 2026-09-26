@@ -1,4 +1,5 @@
 """Tests for WebSocket manager."""
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -104,10 +105,12 @@ async def test_broadcast_run_update(manager):
     manager._connections["project1"] = [ws]
     run_data = {"run_id": "abc", "status": "completed"}
     await manager.broadcast_run_update("project1", run_data)
-    ws.send_json.assert_awaited_once_with({
-        "type": "run_update",
-        "data": run_data,
-    })
+    ws.send_json.assert_awaited_once_with(
+        {
+            "type": "run_update",
+            "data": run_data,
+        }
+    )
 
 
 @pytest.mark.asyncio
@@ -115,10 +118,12 @@ async def test_broadcast_stats_update(manager):
     ws = AsyncMock()
     manager._connections["project1"] = [ws]
     await manager.broadcast_stats_update("project1")
-    ws.send_json.assert_awaited_once_with({
-        "type": "stats_update",
-        "data": {},
-    })
+    ws.send_json.assert_awaited_once_with(
+        {
+            "type": "stats_update",
+            "data": {},
+        }
+    )
 
 
 def test_get_connection_count_empty(manager):

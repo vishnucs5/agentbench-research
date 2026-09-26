@@ -82,9 +82,21 @@ export function LoginOverlay({ onSwitchToRegister }: LoginOverlayProps) {
             </Button>
           </form>
           <div className="mt-4 flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               Demo: demo@test.com / Demo1234!
             </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                setEmail("demo@test.com")
+                setPassword("Demo1234!")
+              }}
+            >
+              Use Demo
+            </Button>
           </div>
           <div className="mt-3 flex gap-2">
             <Badge variant="secondary">OpenRouter</Badge>

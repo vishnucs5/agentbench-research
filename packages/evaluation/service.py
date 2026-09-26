@@ -35,8 +35,9 @@ class EvaluationService:
         self._metrics: dict[UUID, list[MetricResult]] = {}
 
     async def run_evaluation(self, config: EvaluationConfig | None = None) -> EvaluationSummary:
-        from packages.evaluation.runner import run_evaluation as _run_evaluation
-        summary = await _run_evaluation(
+        from packages.evaluation.runner import EvaluationRunner, compute_evaluation_summary
+
+        runner = EvaluationRunner(
             extraction_service=self.extraction_service,
             retrieval_service=self.retrieval_service,
             synthesis_service=self.synthesis_service,
@@ -44,6 +45,13 @@ class EvaluationService:
             report_service=self.report_service,
             config=config,
         )
+        run = await runner.run_evaluation(config)
+        results = runner.last_results
+        summary, metrics = compute_evaluation_summary(runner.tasks, run, results, config)
+
+        self._runs[run.run_id] = run
+        self._results[run.run_id] = results
+        self._metrics[run.run_id] = metrics
         return summary
 
     def get_run(self, run_id: UUID) -> EvaluationRun | None:

@@ -92,7 +92,9 @@ class TestClaimRepository:
         mock_result.scalar_one_or_none.return_value = mock_claim
         mock_session.execute.return_value = mock_result
 
-        result = await repository.update_claim(claim_id, status=ClaimStatus.VERIFIED, confidence=0.95)
+        result = await repository.update_claim(
+            claim_id, status=ClaimStatus.VERIFIED, confidence=0.95
+        )
 
         assert result == mock_claim
         assert mock_claim.status == ClaimStatus.VERIFIED

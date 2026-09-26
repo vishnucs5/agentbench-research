@@ -21,10 +21,16 @@ class Worker:
         self._running = True
         logger.info("Worker started in %s mode", settings.app_env)
 
-        # Register signal handlers
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
+        # Register signal handlers if supported (not available on Windows)
+        import sys
+
+        if sys.platform != "win32":
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                try:
+                    loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
+                except NotImplementedError:
+                    pass
 
         # Keep running
         while self._running:

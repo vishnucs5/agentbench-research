@@ -18,14 +18,10 @@ async def _require_owned_project(
     session: AsyncSession, project_id: UUID, current_user: User
 ) -> None:
     result = await session.execute(
-        select(Project).where(
-            Project.id == project_id, Project.owner_id == current_user.id
-        )
+        select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )
     if result.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
 
 async def _hydrate_local_index(

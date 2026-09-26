@@ -21,21 +21,19 @@ from packages.security.middleware import get_current_user
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter(prefix="/v1/projects/{project_id}/papers/{paper_id}/extraction", tags=["extraction"])
+router = APIRouter(
+    prefix="/v1/projects/{project_id}/papers/{paper_id}/extraction", tags=["extraction"]
+)
 
 
 async def _require_owned_project(
     session: AsyncSession, project_id: UUID, current_user: User
 ) -> None:
     result = await session.execute(
-        select(Project).where(
-            Project.id == project_id, Project.owner_id == current_user.id
-        )
+        select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )
     if result.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
 
 @router.post(
@@ -70,6 +68,7 @@ async def extract_claims(
         )
 
     from packages.ingestion.parser import create_parser
+
     parser = create_parser()
     pdf_data = await get_paper_pdf(paper_id, session)
     parsed = parser.parse(pdf_data)
@@ -77,9 +76,7 @@ async def extract_claims(
     return await service.extract_claims(paper_id, parsed, request)
 
 
-async def get_paper_pdf(
-    paper_id: UUID, session: AsyncSession = Depends(get_db_session)
-) -> bytes:
+async def get_paper_pdf(paper_id: UUID, session: AsyncSession = Depends(get_db_session)) -> bytes:
     from packages.ingestion.repository import PaperRepository
     from packages.ingestion.storage import get_storage_service
 

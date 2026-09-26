@@ -46,7 +46,7 @@ export default function TraceReplay() {
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
 
-  const debounceTimer = useRef<ReturnType<typeof setTimeout>>()
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
     clearTimeout(debounceTimer.current)

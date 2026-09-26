@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
+from fastapi import Depends
 from packages.extraction.schemas import ClaimType
-from packages.extraction.service import ExtractionService
+from packages.extraction.service import ExtractionService, get_extraction_service
 from packages.synthesis.comparison import ComparisonService
 from packages.synthesis.gap_analysis import GapAnalysisService
 from packages.synthesis.normalization import NormalizationService
@@ -68,23 +69,27 @@ class SynthesisService:
             claim_type = ClaimType(claim.claim_type)
             if claim_type not in organized:
                 organized[claim_type] = []
-            organized[claim_type].append({
-                "claim_id": claim.claim_id,
-                "claim_type": claim.claim_type,
-                "claim_text": claim.claim_text,
-                "normalized_value": claim.normalized_value,
-                "confidence": claim.confidence,
-                "status": claim.status,
-                "evidence_ids": claim.evidence_ids,
-                "paper_title": getattr(claim, "paper_title", "Unknown"),
-            })
+            organized[claim_type].append(
+                {
+                    "claim_id": claim.claim_id,
+                    "claim_type": claim.claim_type,
+                    "claim_text": claim.claim_text,
+                    "normalized_value": claim.normalized_value,
+                    "confidence": claim.confidence,
+                    "status": claim.status,
+                    "evidence_ids": claim.evidence_ids,
+                    "paper_title": getattr(claim, "paper_title", "Unknown"),
+                }
+            )
         return organized
 
 
 _synthesis_service: SynthesisService | None = None
 
 
-def get_synthesis_service(extraction_service):
+def get_synthesis_service(
+    extraction_service: Annotated[ExtractionService, Depends(get_extraction_service)],
+) -> SynthesisService:
     global _synthesis_service
     if _synthesis_service is None:
         _synthesis_service = SynthesisService(extraction_service=extraction_service)

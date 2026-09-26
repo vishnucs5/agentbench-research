@@ -163,7 +163,9 @@ If a field is not mentioned, use null.""",
 }
 
 
-def create_extraction_prompt(claim_type: ClaimType, paper_text: str) -> tuple[str, str, type[BaseModel]]:
+def create_extraction_prompt(
+    claim_type: ClaimType, paper_text: str
+) -> tuple[str, str, type[BaseModel]]:
     prompt = EXTRACTION_PROMPTS.get(claim_type)
     if not prompt:
         raise ValueError(f"No extraction prompt for claim type: {claim_type}")

@@ -3,11 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 router = APIRouter(prefix="", tags=["dashboard-ui"])
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+@router.get("/favicon.ico", include_in_schema=False)
+async def serve_favicon():
+    favicon_path = STATIC_DIR / "favicon.ico"
+    if favicon_path.exists():
+        return FileResponse(str(favicon_path))
+    return Response(status_code=204)
 
 
 @router.get("/", include_in_schema=False)

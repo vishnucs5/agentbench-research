@@ -99,7 +99,7 @@ select = [
     "ARG", # flake8-unused-arguments
 ]
 ignore = ["E501", "ARG001", "ARG002"]
-per-file-ignores = { "tests/*" = ["S101", "T201"], "apps/api/papers.py" = ["B008"], "apps/api/projects.py" = ["B008"], "apps/api/retrieval.py" = ["B008"], "apps/api/extraction.py" = ["B008"], "apps/api/synthesis.py" = ["B008"], "apps/api/verification.py" = ["B008"], "apps/api/evaluation.py" = ["B008"], "apps/api/dashboard.py" = ["B008"], "apps/api/auth.py" = ["B008"], "apps/api/main.py" = ["B008"], "packages/security/auth.py" = ["B008"], "packages/security/middleware.py" = ["B008"] }
+per-file-ignores = { "tests/*" = ["S101", "T201", "B017", "B007", "F841", "F401"], "apps/api/papers.py" = ["B008"], "apps/api/projects.py" = ["B008"], "apps/api/retrieval.py" = ["B008"], "apps/api/extraction.py" = ["B008"], "apps/api/synthesis.py" = ["B008"], "apps/api/verification.py" = ["B008"], "apps/api/evaluation.py" = ["B008"], "apps/api/dashboard.py" = ["B008"], "apps/api/plagiarism.py" = ["B008"], "apps/api/auth.py" = ["B008"], "apps/api/main.py" = ["B008"], "packages/security/auth.py" = ["B008"], "packages/security/middleware.py" = ["B008"], "packages/plagiarism/*" = ["B008", "B904", "B905", "B007", "UP042"], "packages/domain/models.py" = ["UP042"], "packages/security/schemas.py" = ["UP042"], "sample_research.py" = ["T201"], "test_db.py" = ["T201"] }
 
 [tool.ruff.format]
 quote-style = "double"
@@ -124,6 +124,9 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+markers = [
+    "integration: marks tests as integration tests",
+]
 
 [tool.coverage.run]
 source = ["apps", "packages"]

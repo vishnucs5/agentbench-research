@@ -83,9 +83,7 @@ class TestIngestionService:
         existing_paper = MagicMock()
         existing_paper.id = uuid4()
 
-        with patch.object(
-            service._repo, "get_by_sha256_for_project", return_value=existing_paper
-        ):
+        with patch.object(service._repo, "get_by_sha256_for_project", return_value=existing_paper):
             paper_id, result = await service.ingest_upload(
                 project_id=project_id,
                 file_data=file_data,
@@ -128,7 +126,9 @@ class TestIngestionService:
             )
 
     @pytest.mark.asyncio
-    async def test_process_paper_success(self, service, mock_storage, mock_parser, sample_parsed_paper):
+    async def test_process_paper_success(
+        self, service, mock_storage, mock_parser, sample_parsed_paper
+    ):
         paper_id = uuid4()
 
         mock_paper = MagicMock()
@@ -158,7 +158,9 @@ class TestIngestionService:
                 await service.process_paper(paper_id)
 
     @pytest.mark.asyncio
-    async def test_process_paper_hash_mismatch(self, service, mock_storage, mock_parser, sample_parsed_paper):
+    async def test_process_paper_hash_mismatch(
+        self, service, mock_storage, mock_parser, sample_parsed_paper
+    ):
         paper_id = uuid4()
         mock_paper = MagicMock()
         mock_paper.id = paper_id
@@ -218,9 +220,7 @@ class TestIngestionService:
     async def test_ingest_upload_accepts_pdf_with_charset(self, service, mock_storage):
         project_id = uuid4()
         request = PaperIngestRequest(title="T")
-        with patch.object(
-            service._repo, "get_by_sha256_for_project", return_value=None
-        ):
+        with patch.object(service._repo, "get_by_sha256_for_project", return_value=None):
             with patch.object(service._repo, "create_paper") as mock_create:
                 mock_paper = MagicMock()
                 mock_paper.id = uuid4()
@@ -251,12 +251,8 @@ class TestIngestionService:
     async def test_ingest_upload_orphan_cleanup(self, service, mock_storage):
         project_id = uuid4()
         request = PaperIngestRequest()
-        with patch.object(
-            service._repo, "get_by_sha256_for_project", return_value=None
-        ):
-            with patch.object(
-                service._repo, "create_paper", side_effect=RuntimeError("db fail")
-            ):
+        with patch.object(service._repo, "get_by_sha256_for_project", return_value=None):
+            with patch.object(service._repo, "create_paper", side_effect=RuntimeError("db fail")):
                 with pytest.raises(RuntimeError, match="db fail"):
                     await service.ingest_upload(
                         project_id, b"data", "a.pdf", "application/pdf", request

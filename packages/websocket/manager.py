@@ -1,4 +1,5 @@
 """WebSocket connection manager for live updates."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -41,16 +42,22 @@ class ConnectionManager:
             self.disconnect(ws, project_id)
 
     async def broadcast_run_update(self, project_id: str, run_data: dict[str, Any]) -> None:
-        await self.broadcast_to_project(project_id, {
-            "type": "run_update",
-            "data": run_data,
-        })
+        await self.broadcast_to_project(
+            project_id,
+            {
+                "type": "run_update",
+                "data": run_data,
+            },
+        )
 
     async def broadcast_stats_update(self, project_id: str) -> None:
-        await self.broadcast_to_project(project_id, {
-            "type": "stats_update",
-            "data": {},
-        })
+        await self.broadcast_to_project(
+            project_id,
+            {
+                "type": "stats_update",
+                "data": {},
+            },
+        )
 
     def get_connection_count(self, project_id: str) -> int:
         return len(self._connections.get(project_id, []))

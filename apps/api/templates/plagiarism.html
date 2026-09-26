@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plagiarism Checker • AgentBench-Research</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  .match-high { border-left: 4px solid #dc2626; background: #fef2f2; }
+  .match-medium { border-left: 4px solid #d97706; background: #fffbeb; }
+  .match-low { border-left: 4px solid #2563eb; background: #eff6ff; }
+  .highlight { background: #fef08a; padding: 0 2px; border-radius: 2px; font-weight: 600; }
+  :focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased min-h-screen">
+<a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 bg-indigo-600 text-white px-4 py-2 rounded">Skip to main content</a>
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-10">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white grid place-items-center" aria-hidden="true"><i class="fa-solid fa-search"></i></div>
+      <div>
+        <h1 class="font-bold text-lg leading-none">Plagiarism Checker</h1>
+        <p class="text-xs text-slate-500">AgentBench-Research • Evidence-grounded analysis</p>
+      </div>
+    </div>
+    <nav aria-label="Primary">
+      <a href="/" class="text-sm font-medium text-indigo-600 hover:text-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-2 py-1">← Back to Dashboard</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main-content" class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+  <!-- Intro -->
+  <section aria-labelledby="intro-heading" class="mb-8">
+    <h2 id="intro-heading" class="text-2xl font-bold tracking-tight">Check for potentially similar content</h2>
+    <p class="mt-2 text-sm text-slate-600 max-w-3xl">
+      Paste text or upload a file (<code>.txt</code>, <code>.pdf</code>, <code>.docx</code>). Your submission is compared against stored project documents and, if configured, an external plagiarism-detection API.
+      Results use wording such as <em>“potentially similar content”</em> — similarity scores alone do not prove plagiarism. Review matches manually.
+    </p>
+    <div class="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900" role="note" aria-label="Privacy note">
+      <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+      Your text is not permanently stored unless you explicitly check “Consent to store”. File type and size are validated. API keys never leave the server.
+    </div>
+  </section>
+
+  <!-- Status live region -->
+  <div id="statusRegion" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Form -->
+  <section aria-labelledby="form-heading" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+    <h3 id="form-heading" class="font-semibold text-base mb-4">Submit content for checking</h3>
+
+    <form id="plagiarismForm" novalidate>
+      <!-- Input mode tabs: accessible radio group -->
+      <fieldset class="mb-6">
+        <legend class="text-sm font-medium text-slate-700 mb-2">Input method</legend>
+        <div class="flex gap-2" role="radiogroup" aria-label="Choose input method">
+          <label class="flex items-center gap-2 px-4 py-2 rounded-xl border cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-300 has-[:checked]:text-indigo-700">
+            <input type="radio" name="inputMode" value="text" checked class="accent-indigo-600" aria-label="Paste text"> <span class="text-sm font-medium"><i class="fa-regular fa-file-lines" aria-hidden="true"></i> Paste text</span>
+          </label>
+          <label class="flex items-center gap-2 px-4 py-2 rounded-xl border cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-300 has-[:checked]:text-indigo-700">
+            <input type="radio" name="inputMode" value="file" class="accent-indigo-600" aria-label="Upload file"> <span class="text-sm font-medium"><i class="fa-solid fa-upload" aria-hidden="true"></i> Upload file</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <!-- Text area -->
+      <div id="textInputGroup">
+        <label for="inputText" class="block text-sm font-medium text-slate-700 mb-1">Text to check <span class="text-slate-400 font-normal">(required if pasting)</span></label>
+        <textarea id="inputText" name="inputText" rows="8" placeholder="Paste your text here...&#10;&#10;Supports multiple paragraphs. Minimal length 20 characters for meaningful comparison."
+          class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          aria-describedby="textHelp textError" maxlength="1000000"></textarea>
+        <div class="flex justify-between mt-1">
+          <p id="textHelp" class="text-xs text-slate-500"><span id="charCount">0</span> characters • Paragraphs preserved, whitespace normalized server-side</p>
+          <p id="textError" class="text-xs text-red-600 hidden" role="alert"></p>
+        </div>
+      </div>
+
+      <!-- File input -->
+      <div id="fileInputGroup" class="hidden">
+        <label for="inputFile" class="block text-sm font-medium text-slate-700 mb-1">Choose file <span class="text-slate-400 font-normal">.txt, .pdf, .docx — max <span id="maxSizeLabel">10</span> MB</span></label>
+        <input id="inputFile" name="inputFile" type="file" accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-indigo-50 file:text-indigo-700 file:font-medium hover:file:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 rounded-xl border border-slate-300 p-2"
+          aria-describedby="fileHelp fileError">
+        <p id="fileHelp" class="text-xs text-slate-500 mt-1">Readable text will be extracted. Scanned PDFs without OCR may return no text.</p>
+        <p id="fileError" class="text-xs text-red-600 hidden" role="alert"></p>
+        <div id="fileInfo" class="mt-2 text-xs text-slate-600 hidden" aria-live="polite"></div>
+      </div>
+
+      <!-- Options -->
+      <div class="grid sm:grid-cols-2 gap-4 mt-6">
+        <div>
+          <label for="projectId" class="block text-sm font-medium text-slate-700">Project scope <span class="text-slate-400 font-normal">(optional)</span></label>
+          <input id="projectId" name="projectId" type="text" placeholder="UUID of project to limit comparison"
+            class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+            aria-describedby="projectHelp">
+          <p id="projectHelp" class="text-xs text-slate-500 mt-1">Leave blank to compare against all accessible documents.</p>
+        </div>
+        <div>
+          <label for="threshold" class="block text-sm font-medium text-slate-700">Similarity threshold: <span id="thresholdValue" class="font-mono text-indigo-600">0.30</span></label>
+          <input id="threshold" name="threshold" type="range" min="0" max="1" step="0.05" value="0.30"
+            class="w-full mt-2 accent-indigo-600" aria-describedby="thresholdHelp">
+          <p id="thresholdHelp" class="text-xs text-slate-500">Lower = more sensitive. Only passages above threshold are reported.</p>
+        </div>
+      </div>
+
+      <div class="mt-4 space-y-3">
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input id="consentStore" name="consentStore" type="checkbox" class="mt-1 accent-indigo-600 w-4 h-4">
+          <span class="text-sm"><span class="font-medium">Consent to store submission and matches</span> <span class="text-slate-500">— if unchecked, only a hash is retained and detailed matches are deleted after the report is generated.</span></span>
+        </label>
+        <p class="text-xs text-slate-500">By checking, you allow the system to retain the report for later review.</p>
+      </div>
+
+      <div class="mt-6 flex flex-wrap gap-3">
+        <button id="submitBtn" type="submit" class="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Check for similar content
+        </button>
+        <button id="clearBtn" type="button" class="px-5 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-sm font-medium focus:ring-2 focus:ring-indigo-500">Clear</button>
+        <span id="submitHint" class="text-xs text-slate-500 self-center">Requires login. Uses Bearer token from localStorage.</span>
+      </div>
+
+      <!-- States: loading, error, empty, unsupported -->
+      <div id="formStatus" class="mt-4" aria-live="polite" aria-atomic="true"></div>
+    </form>
+  </section>
+
+  <!-- Report -->
+  <section id="reportSection" aria-labelledby="report-heading" class="mt-8 hidden">
+    <h3 id="report-heading" class="font-semibold text-lg mb-4">Report</h3>
+
+    <div id="reportLoading" class="hidden p-6 bg-white rounded-xl border border-slate-200 text-center">
+      <div class="inline-flex items-center gap-3 text-sm text-slate-600" role="status" aria-live="polite">
+        <i class="fa-solid fa-spinner fa-spin text-indigo-600" aria-hidden="true"></i> Checking… comparing against stored documents. This may take a few seconds.
+      </div>
+      <div class="mt-3 w-full bg-slate-100 rounded-full h-2 overflow-hidden"><div class="h-full bg-indigo-600 animate-pulse w-1/2"></div></div>
+    </div>
+
+    <div id="reportError" class="hidden p-4 rounded-xl bg-red-50 border border-red-200 text-sm text-red-800" role="alert"></div>
+
+    <div id="reportEmpty" class="hidden p-6 bg-white rounded-xl border border-slate-200 text-center">
+      <p class="text-sm text-slate-600"><i class="fa-regular fa-circle-check text-green-600" aria-hidden="true"></i> No input yet — paste text or choose a file to begin.</p>
+    </div>
+
+    <div id="reportUnsupported" class="hidden p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900" role="alert"></div>
+
+    <div id="reportContent" class="hidden space-y-6">
+      <!-- Summary cards -->
+      <div class="grid sm:grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl border p-4">
+          <div class="text-xs uppercase tracking-wide text-slate-500 font-semibold">Originality</div>
+          <div id="originalityScore" class="text-2xl font-extrabold text-green-600 mt-1">100%</div>
+          <div class="text-xs text-slate-500">100% = no matches above threshold</div>
+        </div>
+        <div class="bg-white rounded-xl border p-4">
+          <div class="text-xs uppercase tracking-wide text-slate-500 font-semibold">Similarity</div>
+          <div id="similarityScore" class="text-2xl font-extrabold text-slate-900 mt-1">0%</div>
+          <div class="text-xs text-slate-500">Highest segment similarity</div>
+        </div>
+        <div class="bg-white rounded-xl border p-4">
+          <div class="text-xs uppercase tracking-wide text-slate-500 font-semibold">Passages</div>
+          <div id="matchCount" class="text-2xl font-extrabold text-slate-900 mt-1">0</div>
+          <div class="text-xs text-slate-500">Potentially similar passages</div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl border p-4">
+        <h4 class="font-semibold text-sm mb-2"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Summary</h4>
+        <p id="reportSummary" class="text-sm text-slate-700 leading-relaxed"></p>
+        <p class="mt-2 text-xs text-slate-500">Provider: <span id="providerUsed" class="font-mono"></span> • Status: <span id="reportStatus"></span> • <span id="reportId" class="font-mono text-xs"></span></p>
+      </div>
+
+      <div>
+        <h4 class="font-semibold text-sm mb-3">Potentially similar passages <span class="font-normal text-slate-500">— highlighted with icons, not color alone</span></h4>
+        <div id="matchesList" class="space-y-4"></div>
+        <div id="noMatches" class="hidden p-4 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800">
+          <i class="fa-solid fa-check" aria-hidden="true"></i> No potentially similar passages found above the threshold. Your text appears original within the checked sources.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- History -->
+  <section aria-labelledby="history-heading" class="mt-10">
+    <h3 id="history-heading" class="font-semibold text-base mb-3">Recent checks</h3>
+    <button id="loadHistoryBtn" class="text-sm px-4 py-2 rounded-xl border bg-white hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Load history</button>
+    <div id="historyList" class="mt-4 space-y-2"></div>
+    <div id="historyEmpty" class="hidden text-sm text-slate-500 mt-2">No previous checks.</div>
+  </section>
+</main>
+
+<footer class="max-w-5xl mx-auto px-6 py-8 text-xs text-slate-500">
+  <p>Note: This tool detects textual similarity. It does not determine plagiarism — that requires human judgment, citation context, and policy review.</p>
+</footer>
+
+<script>
+const API_BASE = '';
+const statusRegion = document.getElementById('statusRegion');
+function announce(msg){ statusRegion.textContent = msg; }
+
+const form = document.getElementById('plagiarismForm');
+const inputText = document.getElementById('inputText');
+const inputFile = document.getElementById('inputFile');
+const textGroup = document.getElementById('textInputGroup');
+const fileGroup = document.getElementById('fileInputGroup');
+const charCount = document.getElementById('charCount');
+const textError = document.getElementById('textError');
+const fileError = document.getElementById('fileError');
+const fileInfo = document.getElementById('fileInfo');
+const formStatus = document.getElementById('formStatus');
+const threshold = document.getElementById('threshold');
+const thresholdValue = document.getElementById('thresholdValue');
+const maxSizeLabel = document.getElementById('maxSizeLabel');
+
+let supported = { max_size_mb: 10, mime_types: [], extensions: [] };
+
+threshold.addEventListener('input', () => thresholdValue.textContent = Number(threshold.value).toFixed(2));
+
+document.querySelectorAll('input[name="inputMode"]').forEach(r => {
+  r.addEventListener('change', () => {
+    const mode = document.querySelector('input[name="inputMode"]:checked').value;
+    if (mode === 'text') { textGroup.classList.remove('hidden'); fileGroup.classList.add('hidden'); }
+    else { textGroup.classList.add('hidden'); fileGroup.classList.remove('hidden'); }
+  });
+});
+
+inputText.addEventListener('input', () => {
+  charCount.textContent = inputText.value.length;
+  if (inputText.value.length > 1000000) { textError.textContent = 'Text exceeds 1M characters.'; textError.classList.remove('hidden'); }
+  else { textError.classList.add('hidden'); }
+});
+
+inputFile.addEventListener('change', () => {
+  fileError.classList.add('hidden');
+  fileInfo.classList.add('hidden');
+  if (!inputFile.files.length) return;
+  const f = inputFile.files[0];
+  const sizeMB = (f.size / 1024 / 1024).toFixed(2);
+  fileInfo.textContent = `Selected: ${f.name} • ${f.type || 'unknown type'} • ${sizeMB} MB`;
+  fileInfo.classList.remove('hidden');
+  if (f.size > supported.max_size_mb * 1024 * 1024) {
+    fileError.textContent = `File too large (${sizeMB} MB). Maximum is ${supported.max_size_mb} MB.`;
+    fileError.classList.remove('hidden');
+  }
+  const ext = '.' + f.name.split('.').pop().toLowerCase();
+  if (supported.extensions.length && !supported.extensions.includes(ext)) {
+    // still allow but warn via supported check later
+  }
+});
+
+async function fetchSupported(){
+  try {
+    const res = await fetch(`${API_BASE}/v1/plagiarism/supported-types`);
+    if (res.ok) {
+      supported = await res.json();
+      maxSizeLabel.textContent = supported.max_size_mb;
+    }
+  } catch(e) { /* ignore */ }
+}
+fetchSupported();
+
+function getToken(){
+  return localStorage.getItem('access_token') || localStorage.getItem('token') || '';
+}
+
+function showState(id){
+  ['reportLoading','reportError','reportEmpty','reportUnsupported','reportContent'].forEach(el => document.getElementById(el).classList.add('hidden'));
+  if (id) document.getElementById(id).classList.remove('hidden');
+}
+
+function setFormStatus(msg, type='info'){
+  formStatus.innerHTML = msg ? `<div class="${type==='error'?'bg-red-50 border-red-200 text-red-800':'bg-slate-50 border-slate-200 text-slate-700'} border rounded-xl p-3 text-sm" role="${type==='error'?'alert':'status'}">${msg}</div>` : '';
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  setFormStatus('', 'info');
+  const mode = document.querySelector('input[name="inputMode"]:checked').value;
+  const projectId = document.getElementById('projectId').value.trim() || null;
+  const consented = document.getElementById('consentStore').checked;
+  const thresh = threshold.value;
+
+  document.getElementById('reportSection').classList.remove('hidden');
+  const token = getToken();
+  if (!token) {
+    showState('reportError');
+    document.getElementById('reportError').innerHTML = 'Authentication required. <a href="/" class="underline text-indigo-600 font-bold">Please log in here</a> (demo: demo@test.com / Demo1234!).';
+    announce('Authentication required.');
+    return;
+  }
+  const headers = { 'Authorization': `Bearer ${token}` };
+
+  try {
+    let res;
+    if (mode === 'text') {
+      const text = inputText.value.trim();
+      if (!text) { showState('reportError'); document.getElementById('reportError').textContent = 'Please paste some text to check.'; return; }
+      if (text.length < 20) { showState('reportError'); document.getElementById('reportError').textContent = 'Text too short — minimum 20 characters for meaningful check.'; return; }
+      res = await fetch(`${API_BASE}/v1/plagiarism/check/text`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, project_id: projectId, threshold: parseFloat(thresh), consented_to_store: consented })
+      });
+    } else {
+      if (!inputFile.files.length) { showState('reportError'); document.getElementById('reportError').textContent = 'Please choose a file.'; return; }
+      const f = inputFile.files[0];
+      if (f.size > supported.max_size_mb * 1024 * 1024) { showState('reportError'); document.getElementById('reportError').textContent = `File exceeds ${supported.max_size_mb} MB limit.`; return; }
+      const fd = new FormData();
+      fd.append('file', f);
+      if (projectId) fd.append('project_id', projectId);
+      fd.append('threshold', thresh);
+      fd.append('consented_to_store', consented ? 'true' : 'false');
+      res = await fetch(`${API_BASE}/v1/plagiarism/check/file`, { method: 'POST', headers, body: fd });
+    }
+
+    if (res.status === 413) { const j = await res.json().catch(()=>({detail:'File or text too large'})); showState('reportError'); document.getElementById('reportError').textContent = j.detail; announce(j.detail); return; }
+    if (res.status === 429) { const j = await res.json().catch(()=>({detail:'Rate limit exceeded'})); showState('reportError'); document.getElementById('reportError').textContent = j.detail + ' Please try again later.'; announce('Rate limit exceeded'); return; }
+    if (res.status === 415 || res.status === 400) { const j = await res.json().catch(()=>({detail:'Invalid request'})); showState('reportUnsupported'); document.getElementById('reportUnsupported').textContent = j.detail; announce(j.detail); return; }
+    if (!res.ok) { const j = await res.json().catch(()=>({detail: res.statusText})); throw new Error(j.detail || 'Check failed'); }
+
+    const check = await res.json();
+    // Fetch full report
+    const reportRes = await fetch(`${API_BASE}/v1/plagiarism/checks/${check.id}`, { headers });
+    if (!reportRes.ok) { const j = await reportRes.json().catch(()=>({detail: 'Failed to load report'})); throw new Error(j.detail); }
+    const report = await reportRes.json();
+    renderReport(report);
+    announce(`Check complete. Similarity ${Math.round(report.check.overall_similarity*100)} percent. ${report.check.total_matches} passages.`);
+
+  } catch (err) {
+    showState('reportError');
+    document.getElementById('reportError').textContent = err.message || 'Unexpected error.';
+    announce('Error: ' + err.message);
+  }
+});
+
+function renderReport(report){
+  showState('reportContent');
+  const c = report.check;
+  document.getElementById('originalityScore').textContent = `${Math.round(c.originality_score)}%`;
+  document.getElementById('similarityScore').textContent = `${Math.round(c.overall_similarity*100)}%`;
+  document.getElementById('similarityScore').className = `text-2xl font-extrabold mt-1 ${c.overall_similarity >= 0.5 ? 'text-red-600' : c.overall_similarity >= 0.3 ? 'text-amber-600' : 'text-green-600'}`;
+  document.getElementById('matchCount').textContent = c.total_matches;
+  document.getElementById('reportSummary').textContent = report.summary;
+  document.getElementById('providerUsed').textContent = c.provider_used;
+  document.getElementById('reportStatus').textContent = c.status;
+  document.getElementById('reportId').textContent = c.id;
+
+  const list = document.getElementById('matchesList');
+  const noMatches = document.getElementById('noMatches');
+  list.innerHTML = '';
+  if (!report.matches.length) {
+    noMatches.classList.remove('hidden');
+    return;
+  }
+  noMatches.classList.add('hidden');
+  report.matches.forEach((m, idx) => {
+    const level = m.similarity_score >= 0.7 ? 'high' : m.similarity_score >= 0.4 ? 'medium' : 'low';
+    const icon = level==='high' ? 'fa-triangle-exclamation' : level==='medium' ? 'fa-circle-exclamation' : 'fa-circle-info';
+    const label = level==='high' ? 'High similarity' : level==='medium' ? 'Moderate' : 'Low similarity';
+    const div = document.createElement('article');
+    div.className = `match-${level} rounded-xl p-4 border`;
+    div.setAttribute('aria-label', `Match ${idx+1}: ${label} ${Math.round(m.similarity_score*100)} percent`);
+    div.innerHTML = `
+      <div class="flex items-start justify-between gap-2">
+        <h5 class="font-semibold text-sm flex items-center gap-2"><i class="fa-solid ${icon}" aria-hidden="true"></i> ${label} <span class="font-mono text-xs px-2 py-0.5 rounded-full bg-white border">${Math.round(m.similarity_score*100)}% similar • confidence ${Math.round(m.confidence_score*100)}%</span></h5>
+        <span class="text-xs font-mono px-2 py-1 rounded-full bg-white border">${m.source_type}</span>
+      </div>
+      <div class="grid md:grid-cols-2 gap-4 mt-3">
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Your passage <span class="font-normal">(potentially similar)</span></div>
+          <blockquote class="text-sm leading-relaxed p-3 bg-white rounded-lg border"><span class="highlight">${escapeHtml(m.matched_text)}</span></blockquote>
+        </div>
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Matched source${m.source_document_title ? ' — ' + escapeHtml(m.source_document_title) : ''}</div>
+          <blockquote class="text-sm leading-relaxed p-3 bg-white rounded-lg border">${escapeHtml(m.source_text)}</blockquote>
+          ${m.source_url ? `<p class="text-xs mt-1 break-all">Source: <a href="${escapeHtml(m.source_url)}" target="_blank" rel="noopener" class="text-indigo-600 underline focus:ring-2 focus:ring-indigo-500 rounded">${escapeHtml(m.source_url)}</a></p>` : ''}
+          ${m.source_location ? `<p class="text-xs text-slate-500">Location: ${escapeHtml(m.source_location)}</p>` : ''}
+        </div>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  form.reset();
+  document.getElementById('threshold').value = '0.30';
+  thresholdValue.textContent = '0.30';
+  charCount.textContent = '0';
+  textError.classList.add('hidden');
+  fileError.classList.add('hidden');
+  fileInfo.classList.add('hidden');
+  formStatus.innerHTML = '';
+  document.getElementById('reportSection').classList.add('hidden');
+  announce('Form cleared.');
+});
+
+document.getElementById('loadHistoryBtn').addEventListener('click', async () => {
+  const token = getToken();
+  if (!token) { alert('Please log in first.'); return; }
+  const res = await fetch(`${API_BASE}/v1/plagiarism/checks?page=1&page_size=10`, { headers: { 'Authorization': `Bearer ${token}` } });
+  if (!res.ok) { alert('Failed to load history: ' + res.statusText); return; }
+  const data = await res.json();
+  const list = document.getElementById('historyList');
+  const empty = document.getElementById('historyEmpty');
+  list.innerHTML = '';
+  if (!data.checks.length) { empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  data.checks.forEach(c => {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between p-3 bg-white border rounded-xl text-sm';
+    row.innerHTML = `<div><div class="font-mono text-xs text-slate-500">${c.id.slice(0,8)}… • ${new Date(c.created_at).toLocaleString()}</div><div>Originality ${Math.round(c.originality_score)}% • Similarity ${Math.round(c.overall_similarity*100)}% • ${c.total_matches} matches • <span class="px-1.5 py-0.5 rounded text-xs border ${c.status==='completed'?'bg-green-50 border-green-200 text-green-700':'bg-amber-50 border-amber-200'}">${c.status}</span></div></div><button class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500" aria-label="View report ${c.id}">View</button>`;
+    row.querySelector('button').addEventListener('click', async () => {
+      const r = await fetch(`${API_BASE}/v1/plagiarism/checks/${c.id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!r.ok) { alert('Failed to load report'); return; }
+      const report = await r.json();
+      document.getElementById('reportSection').classList.remove('hidden');
+      renderReport(report);
+      window.scrollTo({ top: document.getElementById('reportSection').offsetTop - 80, behavior: 'smooth' });
+      report.matches.length && document.getElementById('reportSection').focus?.();
+    });
+    list.appendChild(row);
+  });
+});
+
+// Keyboard: allow Escape to clear loading
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { document.getElementById('reportLoading')?.classList.add('hidden'); } });
+
+// Show empty state initially
+document.getElementById('reportSection').classList.remove('hidden');
+showState('reportEmpty');
+</script>
+</body>
+</html>

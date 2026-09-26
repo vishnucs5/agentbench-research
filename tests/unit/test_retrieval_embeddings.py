@@ -45,6 +45,7 @@ class TestEmbeddingService:
         texts = ["text " + str(i) for i in range(100)]
         # Mock should return correct number of embeddings
         import numpy as np
+
         mock_model.encode.return_value = np.array([[0.1] * 384] * 100)
         embeddings = service.embed_batch(texts, batch_size=32)
         assert len(embeddings) == 100

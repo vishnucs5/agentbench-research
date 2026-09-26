@@ -137,6 +137,7 @@ class TestFutureWorkClaim:
 class TestClaimExtractionRequest:
     def test_creation(self):
         import uuid
+
         req = ClaimExtractionRequest(
             paper_id=uuid.uuid4(),
             claim_types=[ClaimType.DATASET, ClaimType.MODEL],
@@ -146,6 +147,7 @@ class TestClaimExtractionRequest:
 
     def test_defaults(self):
         import uuid
+
         req = ClaimExtractionRequest(paper_id=uuid.uuid4())
         assert req.claim_types == []
         assert req.chunk_ids is None
@@ -154,6 +156,7 @@ class TestClaimExtractionRequest:
 class TestClaimExtractionResponse:
     def test_creation(self):
         import uuid
+
         resp = ClaimExtractionResponse(
             claim_id=uuid.uuid4(),
             claim_type=ClaimType.DATASET,
@@ -171,6 +174,7 @@ class TestClaimExtractionResponse:
 class TestEvidenceLink:
     def test_evidence_link_request(self):
         import uuid
+
         req = EvidenceLinkRequest(
             claim_id=uuid.uuid4(),
             chunk_id=uuid.uuid4(),
@@ -183,6 +187,7 @@ class TestEvidenceLink:
 
     def test_evidence_link_response(self):
         import uuid
+
         resp = EvidenceLinkResponse(
             evidence_id="ev_123",
             claim_id=uuid.uuid4(),
@@ -198,6 +203,7 @@ class TestExtractionJobStatus:
     def test_creation(self):
         import uuid
         from datetime import datetime
+
         job = ExtractionJobStatus(
             job_id=uuid.uuid4(),
             paper_id=uuid.uuid4(),

@@ -59,7 +59,9 @@ def sample_parsed_paper():
 
 class TestExtractionService:
     @pytest.mark.asyncio
-    async def test_extract_claims_success(self, service, mock_provider, mock_repo, sample_parsed_paper):
+    async def test_extract_claims_success(
+        self, service, mock_provider, mock_repo, sample_parsed_paper
+    ):
         paper_id = uuid4()
         request = ClaimExtractionRequest(
             paper_id=paper_id,
@@ -86,7 +88,9 @@ class TestExtractionService:
         assert mock_repo.create_claim.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_extract_claims_uses_all_types_when_none(self, service, mock_provider, mock_repo, sample_parsed_paper):
+    async def test_extract_claims_uses_all_types_when_none(
+        self, service, mock_provider, mock_repo, sample_parsed_paper
+    ):
         paper_id = uuid4()
         request = ClaimExtractionRequest(paper_id=paper_id)
 
@@ -106,7 +110,9 @@ class TestExtractionService:
         assert len(results) == 8  # All claim types
 
     @pytest.mark.asyncio
-    async def test_extract_claims_handles_error(self, service, mock_provider, mock_repo, sample_parsed_paper):
+    async def test_extract_claims_handles_error(
+        self, service, mock_provider, mock_repo, sample_parsed_paper
+    ):
         paper_id = uuid4()
         request = ClaimExtractionRequest(
             paper_id=paper_id,

@@ -272,10 +272,18 @@ class RetrievalService:
             return []
         tokenized = [self._tokenize(str(c.get("text", ""))) for c in corpus]
         index = BM25Okapi(tokenized)
-        scores = index.get_scores(self._tokenize(query))
+        q_tokens = self._tokenize(query)
+        scores = index.get_scores(q_tokens)
         ranked = sorted(zip(corpus, scores, strict=True), key=lambda x: x[1], reverse=True)[:top_k]
         hits: list[EvidenceHit] = []
         for chunk, score in ranked:
+            chunk_tokens = set(self._tokenize(str(chunk.get("text", ""))))
+            matched_terms = [t for t in q_tokens if t in chunk_tokens]
+            final_score = float(score)
+            if final_score <= 0:
+                if not matched_terms:
+                    continue
+                final_score = round(len(matched_terms) / max(len(q_tokens), 1), 4)
             try:
                 paper_uuid = UUID(str(chunk.get("paper_id", "")))
             except ValueError:
@@ -288,7 +296,7 @@ class RetrievalService:
                     page_number=int(chunk.get("page_number", 1)),
                     section_label=chunk.get("section_label"),
                     text=str(chunk.get("text", "")),
-                    score=float(score),
+                    score=final_score,
                     search_type=SearchType.BM25,
                     metadata=dict(chunk.get("metadata") or {}),
                 )

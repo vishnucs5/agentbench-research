@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     postgres_db: str = "agentbench"
     postgres_user: str = "agentbench"
     postgres_password: str = "agentbench"
-    database_url: PostgresDsn = "postgresql+asyncpg://agentbench:agentbench@localhost:5432/agentbench"
+    database_url: str = "postgresql+asyncpg://agentbench:agentbench@localhost:5432/agentbench"
 
     # Vector Store
     qdrant_url: str = "http://localhost:6333"
@@ -94,6 +94,20 @@ class Settings(BaseSettings):
     # Evaluation
     benchmark_version: str = "1.0.0"
     gold_set_path: str = "data/benchmark/gold.json"
+
+    # Plagiarism Detection
+    plagiarism_api_key: str | None = None
+    plagiarism_api_url: str = "https://api.plagiarismdetector.com/v1"
+    plagiarism_max_upload_size_mb: int = 10
+    plagiarism_allowed_mime_types: list[str] = [
+        "text/plain",
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
+    plagiarism_similarity_threshold: float = 0.3
+    plagiarism_store_submissions: bool = False
+    plagiarism_rate_limit_per_minute: int = 10
+    plagiarism_rate_limit_per_hour: int = 100
 
     @property
     def is_development(self) -> bool:

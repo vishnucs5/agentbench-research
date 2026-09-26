@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
+from fastapi import Depends
 from packages.agent.factory import get_provider
+from packages.domain.database import get_db_session
 from packages.extraction.extractor import extract_all_claims
 from packages.extraction.repository import ClaimRepository
 from packages.extraction.schemas import (
@@ -256,5 +258,7 @@ class ExtractionService:
         raise ValueError(f"Unknown chunk_id: {raw}")
 
 
-def get_extraction_service(session: Any) -> ExtractionService:
+def get_extraction_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ExtractionService:
     return ExtractionService(session)

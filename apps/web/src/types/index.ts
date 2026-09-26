@@ -181,3 +181,24 @@ export interface SupportedFileTypes {
   extensions: string[]
   max_size_mb: number
 }
+
+export interface EvidenceHit {
+  evidence_id: string
+  paper_id: string
+  paper_title: string
+  page_number: number
+  section_label: string | null
+  text: string
+  score: number
+  search_type: string
+}
+
+export interface SearchResponse {
+  hits: EvidenceHit[]
+  total: number
+  query: string
+  search_type: string
+  took_ms: number
+  not_enough_evidence: boolean
+}
+

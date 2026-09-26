@@ -120,6 +120,7 @@ class PDFParser:
         match = re.search(r"D:(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})", date_str)
         if match:
             from datetime import datetime
+
             return datetime(
                 int(match.group(1)),
                 int(match.group(2)),

@@ -26,7 +26,9 @@ async def login(
     http_request: Request,
     auth_service: AuthService = Depends(get_auth_service),
 ):
-    response = await auth_service.login(request, ip_address=http_request.client.host if http_request.client else None)
+    response = await auth_service.login(
+        request, ip_address=http_request.client.host if http_request.client else None
+    )
     if not response:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -74,7 +76,7 @@ async def refresh_token(
 )
 async def change_password(
     request: PasswordChangeRequest,
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service),
 ):
     try:
@@ -91,7 +93,7 @@ async def change_password(
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return UserResponse(
         user_id=current_user.id,
@@ -106,7 +108,7 @@ async def get_current_user_info(
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service),
 ):
     auth_service.revoke_all_refresh_tokens(current_user.id)

@@ -78,6 +78,7 @@ class TestExtractAllClaims:
     @pytest.mark.asyncio
     async def test_extract_single_claim(self):
         from packages.extraction.extractor import extract_claim
+
         mock_provider = AsyncMock()
         mock_response = MagicMock()
         mock_response.content = '{"problem_statement": "Test"}'

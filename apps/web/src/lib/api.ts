@@ -7,6 +7,7 @@ import type {
   PlagiarismReport,
   PlagiarismListResponse,
   SupportedFileTypes,
+  SearchResponse,
 } from "@/types"
 
 const API_BASE = ""
@@ -38,6 +39,12 @@ export async function api<T>(
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
 
   if (!res.ok) {
+    if (res.status === 401) {
+      clearToken()
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("auth:unauthorized"))
+      }
+    }
     const body = await res.json().catch(() => ({}))
     throw new Error(body.detail || `API error ${res.status}`)
   }
@@ -86,6 +93,53 @@ export const dashboardApi = {
 export const papersApi = {
   list: (projectId: string) =>
     api<{ papers: any[]; total: number; page: number; page_size: number }>(`/v1/projects/${projectId}/papers`),
+  upload: (projectId: string, formData: FormData) =>
+    api<{ paper_id: string; status: string; message: string }>(`/v1/projects/${projectId}/papers`, {
+      method: "POST",
+      body: formData,
+    }),
+  process: (projectId: string, paperId: string) =>
+    api<{ paper_id: string; status: string; page_count: number; chunk_count: number; indexed: boolean; message: string }>(
+      `/v1/projects/${projectId}/papers/${paperId}/process`,
+      { method: "POST" }
+    ),
+  getPages: (projectId: string, paperId: string) =>
+    api<{ pages: { page_number: number; text: string; section_label: string | null; char_count: number }[] }>(
+      `/v1/projects/${projectId}/papers/${paperId}/pages`
+    ),
+}
+
+// Search / Retrieval
+export const searchApi = {
+  search: (data: {
+    query: string
+    search_type?: "hybrid" | "semantic" | "bm25"
+    top_k?: number
+    project_id?: string | null
+    score_threshold?: number
+  }) =>
+    api<SearchResponse>("/v1/search", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+}
+
+// Research Runs
+export const runsApi = {
+  execute: (projectId: string, data: { prompt: string; model_profile?: string }) =>
+    api<{
+      run_id: string
+      project_id: string
+      status: string
+      request_text: string
+      model_profile: string
+      total_tool_calls: number
+      steps_completed: string[]
+      message: string
+    }>(`/v1/dashboard/projects/${projectId}/runs`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 }
 
 // Trace Replay

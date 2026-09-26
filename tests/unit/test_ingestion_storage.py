@@ -63,6 +63,7 @@ class TestStorageService:
     def test_file_exists_false(self, storage_service, mock_minio_client):
         from minio.error import S3Error
         from urllib3 import HTTPResponse
+
         # S3Error constructor: (response, code, message, resource, request_id, host_id, bucket_name, object_name)
         response = HTTPResponse()
         response.status = 404

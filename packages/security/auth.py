@@ -56,7 +56,9 @@ class AuthService:
             return False, "Password must contain at least one lowercase letter"
         if self.config.password_require_digits and not any(c.isdigit() for c in password):
             return False, "Password must contain at least one digit"
-        if self.config.password_require_special and not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password):
+        if self.config.password_require_special and not any(
+            c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password
+        ):
             return False, "Password must contain at least one special character"
         return True, None
 
@@ -90,7 +92,9 @@ class AuthService:
         data = payload.model_dump(mode="json")
         # Ensure UUIDs are strings for JWT
         data["user_id"] = str(payload.user_id)
-        data["permissions"] = [p.value if hasattr(p, "value") else str(p) for p in payload.permissions]
+        data["permissions"] = [
+            p.value if hasattr(p, "value") else str(p) for p in payload.permissions
+        ]
         data["role"] = payload.role.value if hasattr(payload.role, "value") else str(payload.role)
         return jwt.encode(
             data,
@@ -134,7 +138,9 @@ class AuthService:
         except (jwt.PyJWTError, ValidationError):
             return None
 
-    async def login(self, request: LoginRequest, ip_address: str | None = None) -> LoginResponse | None:
+    async def login(
+        self, request: LoginRequest, ip_address: str | None = None
+    ) -> LoginResponse | None:
         from packages.domain.database import get_session
         from packages.domain.models import User
         from sqlalchemy import select
@@ -245,6 +251,7 @@ class AuthService:
 
             hashed = self.hash_password(request.password)
             import hashlib
+
             email_hash = hashlib.sha256(request.email.lower().encode()).hexdigest()
             display_name = request.full_name or request.email.split("@")[0]
             user = User(

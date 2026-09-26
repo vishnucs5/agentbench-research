@@ -15,6 +15,8 @@ from packages.evaluation.schemas import (
     EvaluationConfig,
     EvaluationRun,
     EvaluationSummary,
+    MetricResult,
+    MetricType,
     TaskCategory,
     TaskResult,
 )
@@ -421,26 +423,13 @@ class MetricCalculator:
         return 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
 
-async def run_evaluation(
-    extraction_service: ExtractionService,
-    retrieval_service: RetrievalService,
-    synthesis_service: SynthesisService,
-    verification_service: CitationVerificationService,
-    report_service: ReportGenerationService,
+def compute_evaluation_summary(
+    tasks: list[BenchmarkTask],
+    run: EvaluationRun,
+    results: list[TaskResult],
     config: EvaluationConfig | None = None,
-) -> EvaluationSummary:
-    runner = EvaluationRunner(
-        extraction_service=extraction_service,
-        retrieval_service=retrieval_service,
-        synthesis_service=synthesis_service,
-        verification_service=verification_service,
-        report_service=report_service,
-        config=config,
-    )
-
-    run = await runner.run_evaluation(config)
-    results = runner.last_results
-    by_task = {t.task_id: t for t in runner.tasks}
+) -> tuple[EvaluationSummary, list[MetricResult]]:
+    by_task = {t.task_id: t for t in tasks}
 
     successes: list[float] = []
     precisions: list[float] = []
@@ -448,6 +437,8 @@ async def run_evaluation(
     retrieval_ps: list[float] = []
     efficiencies: list[float] = []
     exec_times: list[float] = []
+    metric_results: list[MetricResult] = []
+
     for r in results:
         task = by_task.get(r.task_id)
         gold_answer = dict(task.gold_answer) if task is not None else {}
@@ -455,14 +446,42 @@ async def run_evaluation(
         pred_answer = sys_out.get("answer", sys_out)
         if not isinstance(pred_answer, dict):
             pred_answer = {"answer": pred_answer}
-        successes.append(MetricCalculator.calculate_f1_score(gold_answer, pred_answer))
-        gold_ev = list(task.gold_evidence_ids) if task is not None else []
-        retrieval_ps.append(
-            MetricCalculator.calculate_retrieval_precision_at_5(
-                gold_ev, list(r.system_evidence_ids)
+        f1 = MetricCalculator.calculate_f1_score(gold_answer, pred_answer)
+        successes.append(f1)
+        metric_results.append(
+            MetricResult(
+                evaluation_run_id=run.run_id,
+                task_id=r.task_id,
+                metric_name=MetricType.TASK_SUCCESS,
+                value=f1,
             )
         )
-        efficiencies.append(MetricCalculator.calculate_tool_efficiency(r))
+
+        gold_ev = list(task.gold_evidence_ids) if task is not None else []
+        ret_p = MetricCalculator.calculate_retrieval_precision_at_5(
+            gold_ev, list(r.system_evidence_ids)
+        )
+        retrieval_ps.append(ret_p)
+        metric_results.append(
+            MetricResult(
+                evaluation_run_id=run.run_id,
+                task_id=r.task_id,
+                metric_name=MetricType.RETRIEVAL_PRECISION_AT_5,
+                value=ret_p,
+            )
+        )
+
+        eff = MetricCalculator.calculate_tool_efficiency(r)
+        efficiencies.append(eff)
+        metric_results.append(
+            MetricResult(
+                evaluation_run_id=run.run_id,
+                task_id=r.task_id,
+                metric_name=MetricType.TOOL_EFFICIENCY,
+                value=eff,
+            )
+        )
+
         exec_times.append(float(r.execution_time_ms))
         verification_payload: Any | None = None
         details = sys_out.get("details")
@@ -477,13 +496,32 @@ async def run_evaluation(
                     verification_payload = cand
                     break
         if verification_payload is not None:
-            precisions.append(MetricCalculator.calculate_citation_precision(verification_payload))
-            unsupported_rates.append(
-                MetricCalculator.calculate_unsupported_claim_rate(verification_payload)
-            )
+            cp = MetricCalculator.calculate_citation_precision(verification_payload)
+            precisions.append(cp)
+            uc = MetricCalculator.calculate_unsupported_claim_rate(verification_payload)
+            unsupported_rates.append(uc)
         else:
-            precisions.append(1.0 if r.error is None else 0.0)
-            unsupported_rates.append(0.0 if r.error is None else 1.0)
+            cp = 1.0 if r.error is None else 0.0
+            precisions.append(cp)
+            uc = 0.0 if r.error is None else 1.0
+            unsupported_rates.append(uc)
+
+        metric_results.append(
+            MetricResult(
+                evaluation_run_id=run.run_id,
+                task_id=r.task_id,
+                metric_name=MetricType.CITATION_PRECISION,
+                value=cp,
+            )
+        )
+        metric_results.append(
+            MetricResult(
+                evaluation_run_id=run.run_id,
+                task_id=r.task_id,
+                metric_name=MetricType.UNSUPPORTED_CLAIM_RATE,
+                value=uc,
+            )
+        )
 
     def _mean(xs: list[float]) -> float:
         return sum(xs) / len(xs) if xs else 0.0
@@ -506,4 +544,26 @@ async def run_evaluation(
         avg_execution_time_ms=_mean(exec_times),
     )
 
+    return summary, metric_results
+
+
+async def run_evaluation(
+    extraction_service: ExtractionService,
+    retrieval_service: RetrievalService,
+    synthesis_service: SynthesisService,
+    verification_service: CitationVerificationService,
+    report_service: ReportGenerationService,
+    config: EvaluationConfig | None = None,
+) -> EvaluationSummary:
+    runner = EvaluationRunner(
+        extraction_service=extraction_service,
+        retrieval_service=retrieval_service,
+        synthesis_service=synthesis_service,
+        verification_service=verification_service,
+        report_service=report_service,
+        config=config,
+    )
+
+    run = await runner.run_evaluation(config)
+    summary, _ = compute_evaluation_summary(runner.tasks, run, runner.last_results, config)
     return summary

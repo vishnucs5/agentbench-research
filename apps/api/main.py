@@ -99,11 +99,13 @@ def create_app() -> FastAPI:
     from apps.api.evaluation import router as evaluation_router
     from apps.api.extraction import router as extraction_router
     from apps.api.papers import router as papers_router
+    from apps.api.plagiarism import router as plagiarism_router
     from apps.api.projects import router as projects_router
     from apps.api.retrieval import router as retrieval_router
     from apps.api.synthesis import router as synthesis_router
     from apps.api.verification import router as verification_router
     from packages.websocket import websocket_router, ws_manager
+
     app.include_router(auth_router)
     app.include_router(projects_router)
     app.include_router(papers_router)
@@ -112,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(synthesis_router)
     app.include_router(verification_router)
     app.include_router(evaluation_router)
+    app.include_router(plagiarism_router)
     app.include_router(dashboard_router)
     app.include_router(dashboard_ui_router)
     app.include_router(websocket_router)

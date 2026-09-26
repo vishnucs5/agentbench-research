@@ -1,4 +1,5 @@
 """Redis-backed cache with TTL support."""
+
 from __future__ import annotations
 
 import json

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from packages.domain.database import get_db_session
@@ -25,14 +28,10 @@ async def _require_owned_project(
     session: AsyncSession, project_id: UUID, current_user: User
 ) -> None:
     result = await session.execute(
-        select(Project).where(
-            Project.id == project_id, Project.owner_id == current_user.id
-        )
+        select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )
     if result.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
 
 class PaperProcessResponse(BaseModel):
@@ -71,6 +70,7 @@ async def upload_paper(
     await file.close()
 
     import json
+
     author_list = None
     if authors:
         try:
@@ -100,10 +100,56 @@ async def upload_paper(
             message="Paper already exists (duplicate detected by SHA-256)",
         )
 
+    # Automatically parse, chunk, and index the paper for immediate search and extraction
+    try:
+        parsed = await service.process_paper(paper_id)
+        page_rows = (
+            (await session.execute(select(PaperPage).where(PaperPage.paper_id == paper_id)))
+            .scalars()
+            .all()
+        )
+        if page_rows:
+            page_ids = {p.page_number: p.id for p in page_rows}
+            from packages.retrieval.chunker import ChunkingService
+
+            chunker = ChunkingService()
+            doc_chunks = chunker.chunk_paper(parsed, paper_id)
+            for c in doc_chunks:
+                pid = page_ids.get(c.page_number)
+                if pid:
+                    session.add(
+                        Chunk(
+                            paper_id=paper_id,
+                            page_id=pid,
+                            text=c.text,
+                            token_count=c.token_count,
+                            chunk_version="1.0.0",
+                            metadata_json=dict(c.metadata or {}),
+                        )
+                    )
+            await session.flush()
+            from packages.retrieval.service import get_retrieval_service
+
+            try:
+                await get_retrieval_service().index_paper(
+                    parsed,
+                    str(paper_id),
+                    str(project_id),
+                    metadata={"paper_title": request.title or file.filename},
+                )
+            except Exception as idx_err:
+                logger.warning("Vector indexing deferred: %s", idx_err)
+
+            from packages.ingestion.repository import PaperRepository
+
+            await PaperRepository(session).update_status(paper_id, PaperStatus.INDEXED)
+    except Exception as e:
+        logger.warning("Auto-processing paper deferred: %s", e)
+
     return PaperIngestResponse(
         paper_id=paper_id,
         status="created",
-        message="Paper uploaded successfully. Processing started.",
+        message="Paper uploaded and processed successfully.",
     )
 
 
@@ -273,10 +319,10 @@ async def process_paper_endpoint(
 
     # Map page numbers to persisted page ids for chunk linkage
     page_rows = (
-        await session.execute(
-            select(PaperPage).where(PaperPage.paper_id == paper_id)
-        )
-    ).scalars().all()
+        (await session.execute(select(PaperPage).where(PaperPage.paper_id == paper_id)))
+        .scalars()
+        .all()
+    )
     if not page_rows:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -286,6 +332,10 @@ async def process_paper_endpoint(
 
     # Chunk and persist to DB (powers local BM25 fallback)
     from packages.retrieval.chunker import ChunkingService
+    from sqlalchemy import delete
+
+    # Delete existing chunks first to ensure idempotent re-processing
+    await session.execute(delete(Chunk).where(Chunk.paper_id == paper_id))
 
     chunker = ChunkingService()
     doc_chunks = chunker.chunk_paper(parsed, paper_id)
@@ -323,9 +373,7 @@ async def process_paper_endpoint(
     except Exception:
         indexed = False
 
-    await repo.update_status(
-        paper_id, PaperStatus.INDEXED if indexed else PaperStatus.PARSED
-    )
+    await repo.update_status(paper_id, PaperStatus.INDEXED if indexed else PaperStatus.PARSED)
 
     return PaperProcessResponse(
         paper_id=paper_id,

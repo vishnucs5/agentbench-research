@@ -15,9 +15,11 @@ class TestResponse(BaseModel):
 
 @pytest.fixture
 def mock_provider():
-    return MockProvider({
-        "test prompt": json.dumps({"answer": "test answer", "confidence": 0.9}),
-    })
+    return MockProvider(
+        {
+            "test prompt": json.dumps({"answer": "test answer", "confidence": 0.9}),
+        }
+    )
 
 
 @pytest.mark.asyncio
