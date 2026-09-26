@@ -29,14 +29,15 @@ class QdrantStore:
         self._client = QdrantClient(url=settings.qdrant_url)
         self._ensure_collection()
 
-    def _ensure_collection(self, dimension: int = 384) -> None:
+    def _ensure_collection(self, dimension: int | None = None) -> None:
+        dim = dimension or get_settings().embedding_dimension
         try:
             self._client.get_collection(self.collection_name)
         except UnexpectedResponse:
             self._client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=qdrant_models.VectorParams(
-                    size=dimension,
+                    size=dim,
                     distance=qdrant_models.Distance.COSINE,
                 ),
             )
@@ -71,7 +72,11 @@ class QdrantStore:
             return
         if len(chunks) != len(embeddings):
             raise ValueError("chunks and embeddings length mismatch")
-        dimension = len(embeddings[0]) if embeddings and embeddings[0] else 384
+        dimension = (
+            len(embeddings[0])
+            if embeddings and embeddings[0]
+            else get_settings().embedding_dimension
+        )
         try:
             self._client.get_collection(self.collection_name)
         except UnexpectedResponse:

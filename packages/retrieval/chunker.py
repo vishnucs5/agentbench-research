@@ -21,12 +21,20 @@ class Chunk:
 
 class ChunkingService:
     def __init__(
-        self, chunk_size: int = 512, chunk_overlap: int = 50, preserve_sections: bool = True
+        self,
+        chunk_size: int | None = None,
+        chunk_overlap: int | None = None,
+        preserve_sections: bool = True,
     ):
-        if not (0 <= chunk_overlap < chunk_size):
+        from packages.domain.config import get_settings
+
+        settings = get_settings()
+        size = chunk_size if chunk_size is not None else settings.chunk_size
+        overlap = chunk_overlap if chunk_overlap is not None else settings.chunk_overlap
+        if not (0 <= overlap < size):
             raise ValueError("chunk_overlap must satisfy 0 <= overlap < size")
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
+        self.chunk_size = size
+        self.chunk_overlap = overlap
         self.preserve_sections = preserve_sections
 
     def chunk_paper(
@@ -167,8 +175,8 @@ class ChunkingService:
 
 
 def create_chunker(
-    chunk_size: int = 512,
-    chunk_overlap: int = 50,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
     preserve_sections: bool = True,
 ) -> ChunkingService:
     return ChunkingService(chunk_size, chunk_overlap, preserve_sections)

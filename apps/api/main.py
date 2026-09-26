@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from packages.cache.memory import MemoryCache
 from packages.cache.redis import RedisCache
@@ -125,6 +126,28 @@ def create_app() -> FastAPI:
 
     # Expose ws_manager for use in other modules
     app.state.ws_manager = ws_manager
+
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request, exc: ValueError):
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc), "error": "Bad Request"},
+        )
+
+    @app.exception_handler(PermissionError)
+    async def permission_error_handler(request, exc: PermissionError):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": str(exc), "error": "Forbidden"},
+        )
+
+    if settings.is_production:
+        issues = settings.validate_production_readiness()
+        if issues:
+            import logging
+            sec_logger = logging.getLogger("agentbench.security")
+            for issue in issues:
+                sec_logger.warning("CRITICAL SECURITY ADVISORY: %s", issue)
 
     assets_dir = Path(__file__).resolve().parent / "static" / "assets"
     if assets_dir.is_dir():

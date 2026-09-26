@@ -97,3 +97,46 @@ def test_settings_is_production():
         settings = Settings()
         assert settings.is_development is False
         assert settings.is_production is True
+
+
+def test_validate_production_readiness():
+    from packages.domain.config import reset_settings
+
+    # Production settings with defaults should flag warnings/issues
+    with patch.dict(
+        os.environ,
+        {
+            "SECRET_KEY": "your-secret-key-change-in-production-min-32-chars",
+            "APP_ENV": "production",
+            "POSTGRES_PASSWORD": "agentbench",
+            "MINIO_ROOT_PASSWORD": "minioadmin",
+            "DEMO_MODE": "true",
+        },
+        clear=True,
+    ):
+        settings = Settings()
+        issues = settings.validate_production_readiness()
+        assert len(issues) == 4
+        assert any("SECRET_KEY" in s for s in issues)
+        assert any("POSTGRES_PASSWORD" in s for s in issues)
+        assert any("MINIO_ROOT_PASSWORD" in s for s in issues)
+        assert any("DEMO_MODE" in s for s in issues)
+
+    # Secure production settings should produce 0 issues
+    with patch.dict(
+        os.environ,
+        {
+            "SECRET_KEY": "a-secure-production-key-that-is-at-least-32-bytes-long",
+            "APP_ENV": "production",
+            "POSTGRES_PASSWORD": "StrongDBPassword#2026",
+            "MINIO_ROOT_PASSWORD": "StrongMinioPassword#2026",
+            "DEMO_MODE": "false",
+        },
+        clear=True,
+    ):
+        settings = Settings()
+        issues = settings.validate_production_readiness()
+        assert len(issues) == 0
+
+    reset_settings()
+

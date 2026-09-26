@@ -155,8 +155,11 @@ class SecurityConfig(BaseModel):
     password_require_lowercase: bool = True
     password_require_digits: bool = True
     password_require_special: bool = True
+    password_disallow_common: bool = True
     max_login_attempts: int = 5
     lockout_duration_minutes: int = 15
+    ip_max_login_attempts: int = 20
+    ip_lockout_duration_minutes: int = 30
     session_timeout_minutes: int = 60
     rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
     cors_allowed_origins: list[str] = Field(default_factory=list)

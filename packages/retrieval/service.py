@@ -43,6 +43,7 @@ class RetrievalService:
                 self.qdrant = None
         self._bm25_index: BM25Okapi | None = None
         self._bm25_corpus: list[dict[str, Any]] = []
+        self._tokenized_corpus: list[list[str]] = []
         try:
             self.load_bm25_index()
         except Exception as e:
@@ -144,23 +145,33 @@ class RetrievalService:
             incoming_by_id[str(c.get("chunk_id", ""))] = c
         deduped_incoming = list(incoming_by_id.values())
         incoming_ids = set(incoming_by_id.keys())
-        if incoming_ids:
-            self._bm25_corpus = [
-                c for c in self._bm25_corpus if str(c.get("chunk_id", "")) not in incoming_ids
-            ]
-        else:
-            # Nothing new with valid ids; keep corpus as-is.
-            pass
-        new_texts = [str(c.get("text", "")) for c in deduped_incoming]
-        tokenized = [self._tokenize(t) for t in new_texts]
 
-        if self._bm25_index is None:
-            self._bm25_corpus = deduped_incoming
-            self._bm25_index = BM25Okapi(tokenized)
+        # Ensure tokenized cache is aligned with corpus
+        if len(self._tokenized_corpus) != len(self._bm25_corpus):
+            self._tokenized_corpus = [
+                self._tokenize(str(c.get("text", ""))) for c in self._bm25_corpus
+            ]
+
+        if incoming_ids:
+            kept_corpus: list[dict[str, Any]] = []
+            kept_tokens: list[list[str]] = []
+            for doc, toks in zip(self._bm25_corpus, self._tokenized_corpus):
+                if str(doc.get("chunk_id", "")) not in incoming_ids:
+                    kept_corpus.append(doc)
+                    kept_tokens.append(toks)
+            self._bm25_corpus = kept_corpus
+            self._tokenized_corpus = kept_tokens
+
+        new_texts = [str(c.get("text", "")) for c in deduped_incoming]
+        new_tokenized = [self._tokenize(t) for t in new_texts]
+
+        self._bm25_corpus.extend(deduped_incoming)
+        self._tokenized_corpus.extend(new_tokenized)
+
+        if self._tokenized_corpus:
+            self._bm25_index = BM25Okapi(self._tokenized_corpus)
         else:
-            self._bm25_corpus.extend(deduped_incoming)
-            all_tokenized = [self._tokenize(str(c.get("text", ""))) for c in self._bm25_corpus]
-            self._bm25_index = BM25Okapi(all_tokenized)
+            self._bm25_index = None
 
     def _tokenize(self, text: str) -> list[str]:
         import re
@@ -318,12 +329,22 @@ class RetrievalService:
                 self.qdrant.delete_paper_chunks(paper_id)
             except Exception as e:
                 logger.warning("Qdrant delete failed (%s)", e)
-        self._bm25_corpus = [
-            c for c in self._bm25_corpus if str(c.get("paper_id", "")) != str(paper_id)
-        ]
-        if self._bm25_corpus:
-            all_tokenized = [self._tokenize(str(c.get("text", ""))) for c in self._bm25_corpus]
-            self._bm25_index = BM25Okapi(all_tokenized)
+        if len(self._tokenized_corpus) != len(self._bm25_corpus):
+            self._tokenized_corpus = [
+                self._tokenize(str(c.get("text", ""))) for c in self._bm25_corpus
+            ]
+
+        kept_corpus: list[dict[str, Any]] = []
+        kept_tokens: list[list[str]] = []
+        for doc, toks in zip(self._bm25_corpus, self._tokenized_corpus):
+            if str(doc.get("paper_id", "")) != str(paper_id):
+                kept_corpus.append(doc)
+                kept_tokens.append(toks)
+        self._bm25_corpus = kept_corpus
+        self._tokenized_corpus = kept_tokens
+
+        if self._tokenized_corpus:
+            self._bm25_index = BM25Okapi(self._tokenized_corpus)
         else:
             self._bm25_index = None
 
@@ -337,7 +358,14 @@ class RetrievalService:
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp = target.with_suffix(target.suffix + ".tmp")
             with open(tmp, "wb") as f:
-                pickle.dump({"index": self._bm25_index, "corpus": self._bm25_corpus}, f)
+                pickle.dump(
+                    {
+                        "index": self._bm25_index,
+                        "corpus": self._bm25_corpus,
+                        "tokenized": self._tokenized_corpus,
+                    },
+                    f,
+                )
             tmp.replace(target)
         except Exception as e:
             logger.warning("Could not persist BM25 index (%s)", e)
@@ -355,8 +383,15 @@ class RetrievalService:
         try:
             with open(path, "rb") as f:
                 data = pickle.load(f)
-            self._bm25_index = data["index"]
-            self._bm25_corpus = data["corpus"]
+            self._bm25_index = data.get("index")
+            self._bm25_corpus = data.get("corpus", [])
+            cached_tokens = data.get("tokenized")
+            if cached_tokens and len(cached_tokens) == len(self._bm25_corpus):
+                self._tokenized_corpus = cached_tokens
+            else:
+                self._tokenized_corpus = [
+                    self._tokenize(str(c.get("text", ""))) for c in self._bm25_corpus
+                ]
             return True
         except FileNotFoundError:
             return False
@@ -373,3 +408,8 @@ def get_retrieval_service() -> RetrievalService:
     if _retrieval_service is None:
         _retrieval_service = RetrievalService()
     return _retrieval_service
+
+
+def reset_retrieval_service() -> None:
+    global _retrieval_service
+    _retrieval_service = None

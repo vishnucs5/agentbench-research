@@ -26,11 +26,26 @@ from packages.security.schemas import (
 from pydantic import ValidationError
 
 
+DISALLOWED_COMMON_PASSWORDS: set[str] = {
+    "password",
+    "password123",
+    "password1234",
+    "admin1234",
+    "12345678",
+    "qwerty1234",
+    "welcome123",
+    "letmein123",
+    "agentbench123",
+}
+
+
 class AuthService:
     def __init__(self, config: SecurityConfig | None = None):
         self.config = config or self._default_config()
         self._failed_attempts: dict[str, list[float]] = {}
         self._locked_until: dict[str, float] = {}
+        self._ip_failed_attempts: dict[str, list[float]] = {}
+        self._ip_locked_until: dict[str, float] = {}
         self._refresh_tokens: dict[str, dict[str, Any]] = {}
 
     def _default_config(self) -> SecurityConfig:
@@ -47,9 +62,25 @@ class AuthService:
     def verify_password(self, password: str, hashed: str) -> bool:
         return bcrypt.checkpw(password.encode(), hashed.encode())
 
-    def validate_password_strength(self, password: str) -> tuple[bool, str | None]:
+    def validate_password_strength(
+        self, password: str, user_email: str | None = None
+    ) -> tuple[bool, str | None]:
         if len(password) < self.config.password_min_length:
             return False, f"Password must be at least {self.config.password_min_length} characters"
+        if len(password) > 128:
+            return False, "Password cannot exceed 128 characters"
+
+        if getattr(self.config, "password_disallow_common", True):
+            normalized = password.strip().lower()
+            if normalized in DISALLOWED_COMMON_PASSWORDS or any(
+                p in normalized for p in ("password", "123456", "admin123")
+            ):
+                return False, "Password is too common and easily guessed"
+            if user_email and "@" in user_email:
+                local_part = user_email.split("@")[0].lower()
+                if len(local_part) >= 4 and local_part in normalized:
+                    return False, "Password must not contain parts of your email address"
+
         if self.config.password_require_uppercase and not any(c.isupper() for c in password):
             return False, "Password must contain at least one uppercase letter"
         if self.config.password_require_lowercase and not any(c.islower() for c in password):
@@ -60,6 +91,7 @@ class AuthService:
             c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password
         ):
             return False, "Password must contain at least one special character"
+
         return True, None
 
     def is_locked(self, identifier: str) -> bool:
@@ -68,6 +100,14 @@ class AuthService:
                 return True
             else:
                 del self._locked_until[identifier]
+        return False
+
+    def is_ip_locked(self, ip_address: str) -> bool:
+        if ip_address in self._ip_locked_until:
+            if time.time() < self._ip_locked_until[ip_address]:
+                return True
+            else:
+                del self._ip_locked_until[ip_address]
         return False
 
     def record_failed_attempt(self, identifier: str) -> None:
@@ -82,11 +122,31 @@ class AuthService:
         if len(self._failed_attempts[identifier]) >= self.config.max_login_attempts:
             self._locked_until[identifier] = now + (self.config.lockout_duration_minutes * 60)
 
+    def record_ip_failed_attempt(self, ip_address: str) -> None:
+        now = time.time()
+        if ip_address not in self._ip_failed_attempts:
+            self._ip_failed_attempts[ip_address] = []
+        self._ip_failed_attempts[ip_address] = [
+            t for t in self._ip_failed_attempts[ip_address] if now - t < 3600
+        ]
+        self._ip_failed_attempts[ip_address].append(now)
+
+        max_ip_attempts = getattr(self.config, "ip_max_login_attempts", 20)
+        lockout_mins = getattr(self.config, "ip_lockout_duration_minutes", 30)
+        if len(self._ip_failed_attempts[ip_address]) >= max_ip_attempts:
+            self._ip_locked_until[ip_address] = now + (lockout_mins * 60)
+
     def clear_failed_attempts(self, identifier: str) -> None:
         if identifier in self._failed_attempts:
             del self._failed_attempts[identifier]
         if identifier in self._locked_until:
             del self._locked_until[identifier]
+
+    def clear_ip_failed_attempts(self, ip_address: str) -> None:
+        if ip_address in self._ip_failed_attempts:
+            del self._ip_failed_attempts[ip_address]
+        if ip_address in self._ip_locked_until:
+            del self._ip_locked_until[ip_address]
 
     def create_access_token(self, payload: TokenPayload) -> str:
         data = payload.model_dump(mode="json")
@@ -145,6 +205,16 @@ class AuthService:
         from packages.domain.models import User
         from sqlalchemy import select
 
+        if ip_address and self.is_ip_locked(ip_address):
+            await self._log_audit(
+                user_id=None,
+                action="login",
+                status="failure",
+                error_message="IP address temporarily locked due to too many failed attempts",
+                ip_address=ip_address,
+            )
+            return None
+
         if self.is_locked(request.email):
             await self._log_audit(
                 user_id=None,
@@ -161,6 +231,8 @@ class AuthService:
 
             if not user or not self.verify_password(request.password, user.hashed_password):
                 self.record_failed_attempt(request.email)
+                if ip_address:
+                    self.record_ip_failed_attempt(ip_address)
                 await self._log_audit(
                     user_id=user.id if user else None,
                     action="login",
@@ -181,6 +253,8 @@ class AuthService:
                 return None
 
             self.clear_failed_attempts(request.email)
+            if ip_address:
+                self.clear_ip_failed_attempts(ip_address)
 
             permissions = get_role_permissions(user.role)
             now = int(time.time())
@@ -224,7 +298,7 @@ class AuthService:
         from packages.domain.models import User
         from sqlalchemy import select
 
-        valid, error = self.validate_password_strength(request.password)
+        valid, error = self.validate_password_strength(request.password, request.email)
         if not valid:
             raise ValueError(error)
 
@@ -326,6 +400,9 @@ class AuthService:
         from packages.domain.models import User
         from sqlalchemy import select
 
+        if request.new_password == request.current_password:
+            raise ValueError("New password cannot be identical to current password")
+
         valid, error = self.validate_password_strength(request.new_password)
         if not valid:
             raise ValueError(error)
@@ -335,6 +412,10 @@ class AuthService:
             user = result.scalar_one_or_none()
             if not user or not self.verify_password(request.current_password, user.hashed_password):
                 return False
+
+            valid, error = self.validate_password_strength(request.new_password, user.email)
+            if not valid:
+                raise ValueError(error)
 
             user.hashed_password = self.hash_password(request.new_password)
             await session.commit()
@@ -388,3 +469,8 @@ def get_auth_service() -> AuthService:
     if _auth_service is None:
         _auth_service = AuthService()
     return _auth_service
+
+
+def reset_auth_service() -> None:
+    global _auth_service
+    _auth_service = None

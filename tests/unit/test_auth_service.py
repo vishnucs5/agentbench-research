@@ -137,3 +137,42 @@ async def test_change_password_rejects_weak_password() -> None:
             uuid4(),
             PasswordChangeRequest(current_password="Aa1!aaaa", new_password="weak"),
         )
+
+
+async def test_password_common_and_email_rejected() -> None:
+    svc = AuthService()
+    # Common password rejected
+    valid, err = svc.validate_password_strength("password123")
+    assert not valid
+    assert "too common" in err.lower() or "character" in err.lower()
+
+    # Email component in password rejected
+    valid, err = svc.validate_password_strength("MySecretAlex!99", user_email="alex@company.com")
+    assert not valid
+    assert "email" in err.lower()
+
+
+async def test_change_password_rejects_identical() -> None:
+    svc = AuthService()
+    from packages.security.schemas import PasswordChangeRequest
+
+    with pytest.raises(ValueError, match="identical"):
+        await svc.change_password(
+            uuid4(),
+            PasswordChangeRequest(current_password="Aa1!aaaa", new_password="Aa1!aaaa"),
+        )
+
+
+def test_ip_lockout_mechanism() -> None:
+    svc = AuthService()
+    ip = "192.168.1.100"
+    assert not svc.is_ip_locked(ip)
+
+    # Record 20 failed attempts
+    for _ in range(20):
+        svc.record_ip_failed_attempt(ip)
+
+    assert svc.is_ip_locked(ip)
+    svc.clear_ip_failed_attempts(ip)
+    assert not svc.is_ip_locked(ip)
+

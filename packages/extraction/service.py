@@ -29,9 +29,10 @@ class ExtractionService:
         session: AsyncSession,
         provider_name: str | None = None,
         repo: ClaimRepository | None = None,
+        provider: Any | None = None,
     ):
         self._session = session
-        self._provider = get_provider(provider_name)
+        self._provider = provider or get_provider(provider_name)
         self._repo = repo or ClaimRepository(session)
         self._jobs: dict[UUID, ExtractionJobStatus] = {}
 

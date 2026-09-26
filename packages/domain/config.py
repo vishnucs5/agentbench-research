@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     chunk_size: int = 512
     chunk_overlap: int = 50
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_dimension: int = 384
     retrieval_top_k: int = 10
     bm25_weight: float = 0.5
     semantic_weight: float = 0.5
@@ -117,7 +118,26 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.app_env == "production"
 
+    def validate_production_readiness(self) -> list[str]:
+        """Validate sensitive production credentials and parameters."""
+        issues: list[str] = []
+        if self.is_production:
+            if "change-in-production" in self.secret_key.lower():
+                issues.append("SECRET_KEY must be changed from the default development placeholder.")
+            if self.postgres_password == "agentbench":
+                issues.append("POSTGRES_PASSWORD must be changed from the default 'agentbench'.")
+            if self.minio_root_password == "minioadmin":
+                issues.append("MINIO_ROOT_PASSWORD must be changed from the default 'minioadmin'.")
+            if self.demo_mode:
+                issues.append("DEMO_MODE cannot be enabled in production environments.")
+        return issues
+
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def reset_settings() -> None:
+    get_settings.cache_clear()
+
