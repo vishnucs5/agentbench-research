@@ -184,6 +184,8 @@ def test_live_features():
     ui_routes = [
         "/",
         "/projects",
+        "/reports",
+        "/chat",
         "/trace",
         "/settings",
         "/dashboard/plagiarism-checker",
@@ -196,8 +198,39 @@ def test_live_features():
         assert res.status_code == 200, f"Route {route} expected 200, got {res.status_code}"
     print(f"[PASS] 16. All {len(ui_routes)} UI routes accessible (status 200)")
 
+    # 17. FEATURE 5: Report Export Suite (LaTeX, BibTeX, Markdown, Audit Log)
+    for rtype in ["latex", "bibtex", "markdown", "audit"]:
+        res = requests.post(
+            f"{BASE_URL}/v1/reports/preview",
+            json={"project_id": proj_id, "report_type": rtype},
+            headers=headers
+        )
+        assert res.status_code == 200, f"Report preview {rtype} failed: {res.status_code} {res.text}"
+        data = res.json()
+        assert len(data["content"]) > 0, f"Empty content for {rtype}"
+    # Verify file download export
+    res = requests.get(
+        f"{BASE_URL}/v1/reports/projects/{proj_id}/export?type=bibtex&format=file",
+        headers=headers
+    )
+    assert res.status_code == 200, f"Bibtex export failed: {res.status_code}"
+    assert "attachment; filename=" in res.headers.get("content-disposition", "")
+    print(f"[PASS] 17. Feature 5 (Report Export Suite): Previewed LaTeX/BibTeX/MD/Audit and downloaded .bib file")
+
+    # 18. FEATURE 6: Multi-Paper Literature Q&A ("Chat with Papers")
+    res = requests.post(
+        f"{BASE_URL}/v1/projects/{proj_id}/chat",
+        json={"query": "What are the detection rates reported for transformer anomaly detection?", "top_k": 3},
+        headers=headers
+    )
+    assert res.status_code == 200, f"Literature Chat failed: {res.status_code} {res.text}"
+    chat_data = res.json()
+    assert len(chat_data["answer"]) > 0, "No answer returned"
+    assert len(chat_data["citations"]) > 0, "No citations returned"
+    print(f"[PASS] 18. Feature 6 (Literature Q&A): Received grounded response with {len(chat_data['citations'])} citation(s)")
+
     print("\n========================================================")
-    print("ALL 16 LIVE END-TO-END CHECKS (ALL 4 FEATURES) PASSED!")
+    print("ALL 18 LIVE END-TO-END CHECKS (ALL 6 FEATURES) PASSED!")
     print("========================================================")
 
 if __name__ == "__main__":

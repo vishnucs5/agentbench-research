@@ -4,6 +4,8 @@ import {
   FolderOpen,
   GitBranch,
   FileSearch,
+  FileText,
+  MessageSquare,
   Settings,
   Layers,
   ExternalLink,
@@ -19,6 +21,8 @@ interface NavItem {
 const workspaceNav: NavItem[] = [
   { label: "Overview", path: "/", icon: <LayoutDashboard size={18} /> },
   { label: "Projects", path: "/projects", icon: <FolderOpen size={18} /> },
+  { label: "Reports & Exports", path: "/reports", icon: <FileText size={18} /> },
+  { label: "Chat with Papers", path: "/chat", icon: <MessageSquare size={18} /> },
   { label: "Trace Replay", path: "/trace", icon: <GitBranch size={18} /> },
   { label: "Plagiarism Checker", path: "/dashboard/plagiarism-checker", icon: <FileSearch size={18} /> },
 ]

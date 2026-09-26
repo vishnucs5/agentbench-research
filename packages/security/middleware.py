@@ -43,6 +43,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/app",
             "/ui",
             "/projects",
+            "/reports",
+            "/chat",
             "/trace",
             "/settings",
         }

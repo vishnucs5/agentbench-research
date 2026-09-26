@@ -202,3 +202,45 @@ export interface SearchResponse {
   not_enough_evidence: boolean
 }
 
+export type ReportType = "bibtex" | "latex" | "markdown" | "audit"
+
+export interface ReportPreviewResponse {
+  project_id: string
+  report_type: ReportType
+  filename: string
+  content: string
+  char_count: number
+  line_count: number
+  generated_at: string
+}
+
+export interface PlagiarismExportResponse {
+  check_id: string
+  format: "html" | "md" | "json"
+  filename: string
+  content: string
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant" | "system"
+  content: string
+}
+
+export interface ChatCitation {
+  paper_id: string
+  paper_title: string
+  authors: string[]
+  year: number | null
+  page: number | null
+  chunk_text: string
+  score: number
+}
+
+export interface ChatResponse {
+  query: string
+  answer: string
+  citations: ChatCitation[]
+  model: string
+  generated_at: string
+}
+

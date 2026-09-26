@@ -12,6 +12,8 @@ import Projects from "@/pages/Projects"
 import TraceReplay from "@/pages/TraceReplay"
 import Settings from "@/pages/Settings"
 import PlagiarismChecker from "@/pages/PlagiarismChecker"
+import Reports from "@/pages/Reports"
+import LiteratureChat from "@/pages/LiteratureChat"
 
 function AuthGate() {
   const { isAuthenticated } = useAuth()
@@ -24,6 +26,8 @@ function AuthGate() {
           <Route element={<AppShell />}>
             <Route path="/" element={<Overview />} />
             <Route path="/projects" element={<Projects />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/chat" element={<LiteratureChat />} />
             <Route path="/trace" element={<TraceReplay />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/dashboard/plagiarism-checker" element={<PlagiarismChecker />} />

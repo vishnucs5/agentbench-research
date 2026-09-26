@@ -8,6 +8,9 @@ import type {
   PlagiarismListResponse,
   SupportedFileTypes,
   SearchResponse,
+  ReportPreviewResponse,
+  ChatResponse,
+  ChatMessage,
 } from "@/types"
 
 const API_BASE = ""
@@ -192,4 +195,43 @@ export const plagiarismApi = {
 // Health
 export const healthApi = {
   check: () => api<any>("/healthz"),
+}
+
+// Reports & Exports
+export const reportsApi = {
+  preview: (data: { project_id: string; report_type: string; custom_title?: string }) =>
+    api<ReportPreviewResponse>("/v1/reports/preview", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  exportUrl: (projectId: string, type: string) =>
+    `${API_BASE}/v1/reports/projects/${projectId}/export?type=${type}&format=file`,
+  exportJson: (projectId: string, type: string) =>
+    api<{
+      project_id: string
+      report_type: string
+      filename: string
+      content: string
+      char_count: number
+      generated_at: string
+    }>(`/v1/reports/projects/${projectId}/export?type=${type}&format=json`),
+  plagiarismExportUrl: (checkId: string, format: "html" | "md" = "html") =>
+    `${API_BASE}/v1/reports/plagiarism/${checkId}/export?format=${format}`,
+}
+
+// Literature Q&A ("Chat with Papers")
+export const chatApi = {
+  sendMessage: (
+    projectId: string,
+    data: {
+      query: string
+      top_k?: number
+      model?: string
+      conversation_history?: ChatMessage[]
+    }
+  ) =>
+    api<ChatResponse>(`/v1/projects/${projectId}/chat`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 }

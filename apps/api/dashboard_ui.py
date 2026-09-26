@@ -83,3 +83,15 @@ async def serve_plagiarism():
 async def serve_plagiarism_checker():
     return await serve_react_app()
 
+
+@router.get("/reports", include_in_schema=False)
+@router.get("/reports/{rest:path}", include_in_schema=False)
+async def serve_reports(rest: str = ""):
+    return await serve_react_app()
+
+
+@router.get("/chat", include_in_schema=False)
+@router.get("/chat/{rest:path}", include_in_schema=False)
+async def serve_chat(rest: str = ""):
+    return await serve_react_app()
+

@@ -94,6 +94,7 @@ def create_app() -> FastAPI:
     app.add_middleware(AuthMiddleware, auth_service=auth_service)
 
     from apps.api.auth import router as auth_router
+    from apps.api.chat import router as chat_router
     from apps.api.dashboard import router as dashboard_router
     from apps.api.dashboard_ui import router as dashboard_ui_router
     from apps.api.evaluation import router as evaluation_router
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     from apps.api.papers import router as papers_router
     from apps.api.plagiarism import router as plagiarism_router
     from apps.api.projects import router as projects_router
+    from apps.api.reports import router as reports_router
     from apps.api.retrieval import router as retrieval_router
     from apps.api.synthesis import router as synthesis_router
     from apps.api.verification import router as verification_router
@@ -115,6 +117,8 @@ def create_app() -> FastAPI:
     app.include_router(verification_router)
     app.include_router(evaluation_router)
     app.include_router(plagiarism_router)
+    app.include_router(reports_router)
+    app.include_router(chat_router)
     app.include_router(dashboard_router)
     app.include_router(dashboard_ui_router)
     app.include_router(websocket_router)
