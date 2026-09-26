@@ -126,8 +126,9 @@ def create_app() -> FastAPI:
     # Expose ws_manager for use in other modules
     app.state.ws_manager = ws_manager
 
-    if Path("apps/api/static/assets").is_dir():
-        app.mount("/assets", StaticFiles(directory="apps/api/static/assets"), name="static-assets")
+    assets_dir = Path(__file__).resolve().parent / "static" / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="static-assets")
 
     @app.get("/healthz", response_model=HealthResponse)
     async def health_check() -> HealthResponse:
