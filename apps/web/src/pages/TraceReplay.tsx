@@ -21,7 +21,7 @@ import StatusBadge from "@/components/dashboard/StatusBadge"
 import EmptyState from "@/components/dashboard/EmptyState"
 import Pagination from "@/components/dashboard/Pagination"
 import LiveIndicator from "@/components/dashboard/LiveIndicator"
-import { RefreshCw, ClipboardList, Search } from "lucide-react"
+import { RefreshCw, ClipboardList, Search, FolderOpen } from "lucide-react"
 
 const STATUS_FILTERS: { label: string; value: string }[] = [
   { label: "Completed", value: "completed" },
@@ -37,7 +37,7 @@ function truncateId(id: string): string {
 }
 
 export default function TraceReplay() {
-  const { selectedProject } = useProject()
+  const { projects, selectedProject, setSelectedProject } = useProject()
   const { isConnected, lastMessage } = useWebSocket(selectedProject?.id ?? null)
   const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
@@ -89,7 +89,7 @@ export default function TraceReplay() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#CFFF4B]">
             TRACE REPLAY
@@ -99,7 +99,33 @@ export default function TraceReplay() {
             State transitions · Tool calls · Evidence IDs · Latency · Retries · Errors · Redacted
           </p>
         </div>
-        <LiveIndicator isConnected={isConnected} />
+
+        <div className="flex items-center gap-3">
+          {/* Project Selector */}
+          <div className="flex items-center gap-2 bg-[#101A26] border border-[#1E293B] p-2 rounded-xl text-xs">
+            <FolderOpen size={14} className="text-[#CFFF4B]" />
+            <select
+              value={selectedProject?.id || ""}
+              onChange={(e) => {
+                const found = projects.find((p) => p.id === e.target.value)
+                if (found) {
+                  setSelectedProject(found)
+                  setSelectedRunId(null)
+                  setPage(1)
+                }
+              }}
+              className="bg-transparent text-white focus:outline-none"
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={p.id} className="bg-[#101A26] text-white">
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <LiveIndicator isConnected={isConnected} />
+        </div>
       </div>
 
       {/* Controls */}
@@ -169,12 +195,32 @@ export default function TraceReplay() {
 
       {/* Empty State */}
       {!isLoading && runs.length === 0 && (
-        <Card className="bg-[#101A26] border-[#1E293B] p-12">
+        <Card className="bg-[#101A26] border-[#1E293B] p-12 text-center space-y-4">
           <EmptyState
             icon={ClipboardList}
-            title="No runs yet"
-            description="Upload a paper to start. Traces are redacted and retained per retention policy."
+            title={`No runs yet for "${selectedProject?.name || "this project"}"`}
+            description="Upload research papers in the Projects tab to start, or switch to a project with existing autonomous runs."
           />
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-[#1E293B] bg-[#0B131E] text-white hover:border-[#CFFF4B]"
+              onClick={() => {
+                const found = projects.find((p) => p.name.includes("Verification") || p.name.includes("survey") || p.name.includes("nids"))
+                if (found) setSelectedProject(found)
+              }}
+            >
+              Switch to Project with Runs
+            </Button>
+            <Button
+              size="sm"
+              className="bg-[#CFFF4B] text-black font-semibold hover:bg-[#CFFF4B]/90"
+              onClick={() => (window.location.href = "/projects")}
+            >
+              Go to Projects / Upload
+            </Button>
+          </div>
         </Card>
       )}
 
