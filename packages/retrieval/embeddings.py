@@ -28,7 +28,7 @@ class EmbeddingService:
     def dimension(self) -> int:
         if self._dimension is None:
             _ = self.model
-        return self._dimension
+        return self._dimension or 384
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -51,6 +51,13 @@ class EmbeddingService:
         )
         return embeddings.tolist()
 
+    def unload(self) -> None:
+        """Unload the heavy embedding model from memory."""
+        if self._model is not None:
+            logger.info("Unloading embedding model: %s", self.model_name)
+            self._model = None
+            self._dimension = None
+
 
 _embedding_service: EmbeddingService | None = None
 
@@ -60,3 +67,10 @@ def get_embedding_service() -> EmbeddingService:
     if _embedding_service is None:
         _embedding_service = EmbeddingService()
     return _embedding_service
+
+
+def reset_embedding_service() -> None:
+    global _embedding_service
+    if _embedding_service is not None:
+        _embedding_service.unload()
+    _embedding_service = None

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import Enum as PyEnum
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from sqlalchemy import (
     JSON,
@@ -20,22 +20,31 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-if TYPE_CHECKING:
-    from .models import (
-        BenchmarkTask,
-        Chunk,
-        Claim,
-        Evaluation,
-        EvidenceLink,
-        Paper,
-        PaperPage,
-        PlagiarismCheck,
-        PlagiarismMatch,
-        Project,
-        ResearchRun,
-        TraceEvent,
-        User,
-    )
+__all__ = [
+    "Base",
+    "BenchmarkTask",
+    "Chunk",
+    "Claim",
+    "ClaimStatus",
+    "Evaluation",
+    "EventType",
+    "EvidenceLink",
+    "Paper",
+    "PaperPage",
+    "PaperStatus",
+    "PlagiarismCheck",
+    "PlagiarismCheckStatus",
+    "PlagiarismMatch",
+    "PlagiarismSourceType",
+    "Project",
+    "ResearchRun",
+    "RunStatus",
+    "SupportType",
+    "TraceEvent",
+    "User",
+    "UserRole",
+    "UserStatus",
+]
 
 
 class Base(DeclarativeBase):
@@ -147,6 +156,7 @@ class User(Base):
         nullable=False,
     )
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    password_history: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

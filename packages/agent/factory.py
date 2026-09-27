@@ -60,6 +60,10 @@ class ProviderRegistry:
         return cls._instances[key]
 
     @classmethod
+    def clear(cls) -> None:
+        cls._instances.clear()
+
+    @classmethod
     async def close_all(cls) -> None:
         for provider in cls._instances.values():
             if hasattr(provider, "close"):

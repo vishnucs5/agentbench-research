@@ -155,7 +155,7 @@ class RetrievalService:
         if incoming_ids:
             kept_corpus: list[dict[str, Any]] = []
             kept_tokens: list[list[str]] = []
-            for doc, toks in zip(self._bm25_corpus, self._tokenized_corpus):
+            for doc, toks in zip(self._bm25_corpus, self._tokenized_corpus, strict=True):
                 if str(doc.get("chunk_id", "")) not in incoming_ids:
                     kept_corpus.append(doc)
                     kept_tokens.append(toks)
@@ -336,7 +336,7 @@ class RetrievalService:
 
         kept_corpus: list[dict[str, Any]] = []
         kept_tokens: list[list[str]] = []
-        for doc, toks in zip(self._bm25_corpus, self._tokenized_corpus):
+        for doc, toks in zip(self._bm25_corpus, self._tokenized_corpus, strict=True):
             if str(doc.get("paper_id", "")) != str(paper_id):
                 kept_corpus.append(doc)
                 kept_tokens.append(toks)

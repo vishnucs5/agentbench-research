@@ -10,23 +10,39 @@ from packages.domain.config import get_settings
 
 
 class RedisCache:
-    def __init__(self, redis_url: str | None = None):
+    def __init__(self, redis_url: str | None = None, max_connections: int = 20):
         settings = get_settings()
         self._redis_url = redis_url or settings.redis_url
+        self._max_connections = max_connections
+        self._pool: redis.ConnectionPool | None = None
         self._client: redis.Redis | None = None
         self._prefix = "agentbench:"
 
     async def connect(self) -> None:
-        self._client = redis.from_url(
+        self._pool = redis.ConnectionPool.from_url(
             self._redis_url,
+            max_connections=self._max_connections,
             encoding="utf-8",
             decode_responses=True,
         )
+        self._client = redis.Redis(connection_pool=self._pool)
+        await self._client.ping()
 
     async def disconnect(self) -> None:
         if self._client:
             await self._client.close()
             self._client = None
+        if self._pool:
+            await self._pool.disconnect()
+            self._pool = None
+
+    async def ping(self) -> bool:
+        if not self._client:
+            return False
+        try:
+            return bool(await self._client.ping())
+        except Exception:
+            return False
 
     async def get(self, key: str) -> Any | None:
         if not self._client:

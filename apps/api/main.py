@@ -14,6 +14,7 @@ from packages.domain.config import get_settings
 from packages.domain.database import close_db, init_db
 from packages.security.auth import get_auth_service
 from packages.security.middleware import (
+    AuditLoggingMiddleware,
     AuthMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     )
 
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(AuditLoggingMiddleware)
     app.add_middleware(RateLimitMiddleware, requests_per_minute=60, requests_per_hour=1000)
     _configured = getattr(settings, "cors_allowed_origins", None)
     if settings.is_development:
@@ -145,6 +147,7 @@ def create_app() -> FastAPI:
         issues = settings.validate_production_readiness()
         if issues:
             import logging
+
             sec_logger = logging.getLogger("agentbench.security")
             for issue in issues:
                 sec_logger.warning("CRITICAL SECURITY ADVISORY: %s", issue)

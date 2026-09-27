@@ -17,6 +17,7 @@ from packages.ingestion.schemas import (
     ParsedPaper,
 )
 from packages.ingestion.storage import StorageService, get_storage_service
+from packages.security.sanitizer import validate_safe_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -66,7 +67,9 @@ class IngestionService:
                 title=request.title,
                 authors=[{"name": a} for a in (request.authors or [])],
                 year=request.year,
-                source_url=str(request.source_url) if request.source_url else None,
+                source_url=validate_safe_url(str(request.source_url))
+                if request.source_url
+                else None,
                 doi=request.doi,
                 sha256=sha256,
                 storage_key=storage_key,

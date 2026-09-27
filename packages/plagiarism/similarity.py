@@ -26,6 +26,29 @@ class SimilarityResult:
 class SimilarityCalculator(ABC):
     """Abstract base class for similarity calculators."""
 
+    def _create_match_result(
+        self,
+        text1: str,
+        text2: str,
+        similarity_score: float,
+        confidence: float | None = None,
+        max_preview_length: int = 500,
+    ) -> SimilarityResult:
+        """Create a standardized SimilarityResult for whole-document comparisons."""
+        conf = confidence if confidence is not None else similarity_score
+        preview1 = text1[:max_preview_length] + "..." if len(text1) > max_preview_length else text1
+        preview2 = text2[:max_preview_length] + "..." if len(text2) > max_preview_length else text2
+        return SimilarityResult(
+            similarity_score=similarity_score,
+            confidence=conf,
+            matched_text=preview1,
+            source_text=preview2,
+            match_start=0,
+            match_end=len(text1),
+            source_start=0,
+            source_end=len(text2),
+        )
+
     @abstractmethod
     def calculate(self, text1: str, text2: str, threshold: float = 0.3) -> list[SimilarityResult]:
         """Calculate similarity between two texts.
@@ -87,15 +110,11 @@ class TfidfCosineSimilarity(SimilarityCalculator):
 
             if similarity >= threshold:
                 return [
-                    SimilarityResult(
+                    self._create_match_result(
+                        text1=text1,
+                        text2=text2,
                         similarity_score=similarity,
-                        confidence=min(similarity * 1.2, 1.0),  # Heuristic confidence
-                        matched_text=text1[:500] + "..." if len(text1) > 500 else text1,
-                        source_text=text2[:500] + "..." if len(text2) > 500 else text2,
-                        match_start=0,
-                        match_end=len(text1),
-                        source_start=0,
-                        source_end=len(text2),
+                        confidence=min(similarity * 1.2, 1.0),
                     )
                 ]
         except ValueError:
@@ -142,15 +161,11 @@ class JaccardSimilarity(SimilarityCalculator):
 
         if similarity >= threshold:
             return [
-                SimilarityResult(
+                self._create_match_result(
+                    text1=text1,
+                    text2=text2,
                     similarity_score=similarity,
                     confidence=similarity,
-                    matched_text=text1[:500] + "..." if len(text1) > 500 else text1,
-                    source_text=text2[:500] + "..." if len(text2) > 500 else text2,
-                    match_start=0,
-                    match_end=len(text1),
-                    source_start=0,
-                    source_end=len(text2),
                 )
             ]
 
@@ -233,15 +248,11 @@ class MinHashSimilarity(SimilarityCalculator):
 
         if similarity >= threshold:
             return [
-                SimilarityResult(
+                self._create_match_result(
+                    text1=text1,
+                    text2=text2,
                     similarity_score=similarity,
-                    confidence=similarity * 0.9,  # MinHash is approximate
-                    matched_text=text1[:500] + "..." if len(text1) > 500 else text1,
-                    source_text=text2[:500] + "..." if len(text2) > 500 else text2,
-                    match_start=0,
-                    match_end=len(text1),
-                    source_start=0,
-                    source_end=len(text2),
+                    confidence=similarity * 0.9,
                 )
             ]
 

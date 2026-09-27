@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from packages.domain.database import get_db_session
 from packages.domain.models import Project, User
 from packages.security.middleware import get_current_user
+from packages.security.sanitizer import sanitize_prompt_input
 from packages.verification.report_generator import (
     ReportGenerationService,
     get_report_generation_service,
@@ -49,6 +50,7 @@ async def verify_draft(
     verification_service: CitationVerificationService = Depends(get_citation_verification_service),
 ) -> VerificationResult:
     await _require_owned_project(session, project_id, current_user)
+    request.draft_text = sanitize_prompt_input(request.draft_text)
     return await verification_service.verify_draft(request)
 
 

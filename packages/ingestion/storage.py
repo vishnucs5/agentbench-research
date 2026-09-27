@@ -27,7 +27,11 @@ class StorageService:
 
         endpoint = settings.minio_endpoint
         host = endpoint.split(":")[0] if ":" in endpoint else endpoint
-        port = int(endpoint.split(":")[1]) if ":" in endpoint else (443 if settings.minio_secure else 80)
+        port = (
+            int(endpoint.split(":")[1])
+            if ":" in endpoint
+            else (443 if settings.minio_secure else 80)
+        )
         reachable = False
 
         if isinstance(Minio, (Mock, MagicMock)):

@@ -24,14 +24,14 @@ class TestPlagiarismUIRoutes:
         """Test that /dashboard/plagiarism-checker serves index.html without auth header."""
         resp = await client.get("/dashboard/plagiarism-checker")
         assert resp.status_code == 200
-        assert "<div id=\"root\">" in resp.text or "<!doctype html>" in resp.text.lower()
+        assert '<div id="root">' in resp.text or "<!doctype html>" in resp.text.lower()
 
     @pytest.mark.asyncio
     async def test_plagiarism_checker_alias_serves_spa(self, client):
         """Test that /plagiarism-checker serves index.html without auth header."""
         resp = await client.get("/plagiarism-checker")
         assert resp.status_code == 200
-        assert "<div id=\"root\">" in resp.text or "<!doctype html>" in resp.text.lower()
+        assert '<div id="root">' in resp.text or "<!doctype html>" in resp.text.lower()
 
     @pytest.mark.asyncio
     async def test_overview_and_other_ui_routes_remain_functional(self, client):

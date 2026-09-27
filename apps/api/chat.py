@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from packages.agent.factory import get_provider
 from packages.domain.database import get_db_session
 from packages.domain.models import Chunk, Paper, PaperPage, Project, User
 from packages.retrieval.schemas import SearchRequest, SearchType
 from packages.retrieval.service import RetrievalService, get_retrieval_service
 from packages.security.middleware import get_current_user
+from packages.security.sanitizer import sanitize_prompt_input
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/v1/projects/{project_id}/chat", tags=["chat"])
 
@@ -25,10 +25,14 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=2000, description="User's literature research question")
+    query: str = Field(
+        min_length=1, max_length=2000, description="User's literature research question"
+    )
     top_k: int = Field(default=5, ge=1, le=20, description="Maximum evidence chunks to retrieve")
     model: str | None = Field(default=None, description="Optional custom model override")
-    conversation_history: list[ChatMessage] = Field(default_factory=list, description="Prior conversation context")
+    conversation_history: list[ChatMessage] = Field(
+        default_factory=list, description="Prior conversation context"
+    )
 
 
 class ChatCitation(BaseModel):
@@ -120,11 +124,12 @@ async def chat_with_papers(
         pass
 
     # 2. Retrieve relevant chunks
+    clean_query = sanitize_prompt_input(payload.query)
     citations: list[ChatCitation] = []
     try:
         search_req = SearchRequest(
-            query=payload.query,
-            project_id=str(project_id),
+            query=clean_query,
+            project_id=project_id,
             search_type=SearchType.BM25,
             top_k=payload.top_k,
             score_threshold=0.0,
@@ -187,7 +192,9 @@ async def chat_with_papers(
         "Every factual claim must cite the corresponding excerpt number (e.g. [1], [2]). "
         "If the excerpts do not contain sufficient evidence to answer, state clearly what information is missing."
     )
-    user_prompt = f"Grounded Literature Excerpts:\n{context_text}\n\nResearcher Question:\n{payload.query}"
+    user_prompt = (
+        f"Grounded Literature Excerpts:\n{context_text}\n\nResearcher Question:\n{clean_query}"
+    )
 
     messages = [{"role": "system", "content": system_prompt}]
     for msg in payload.conversation_history[-6:]:
@@ -204,7 +211,7 @@ async def chat_with_papers(
         )
         answer = completion.content
         model_name = provider.model_name
-    except Exception as e:
+    except Exception:
         provider = None
         model_name = "fallback"
         answer = ""

@@ -1,5 +1,5 @@
-from __future__ import annotations
-
+import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -13,6 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+
+logger = logging.getLogger(__name__)
 
 security = HTTPBearer(auto_error=False)
 
@@ -58,18 +60,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return self._cache
 
     async def _resolve_demo_user(self) -> User | None:
-        """Passwordless demo identity for local use.
+        """Resolve local demo identity when DEMO_MODE is explicitly enabled.
 
-        BY DESIGN: demo fallback stays when demo_mode is explicitly on.
-        Default is demo_mode=False (Task 2); production is fail-closed via
-        is_production. Keep `if not settings.demo_mode or
-        settings.is_production: return None`. Provisions demo user on first use.
+        In production environments, demo mode is strictly disallowed and always fails closed.
+        Provisions a demo user on first use in development environments.
         """
         from packages.domain.config import get_settings
 
         settings = get_settings()
-        # BY DESIGN: demo fallback only when explicitly enabled; fail-closed
-        # in production. 401 repro must use demo_mode=False (default).
         if not settings.demo_mode or settings.is_production:
             return None
         async with get_session() as session:
@@ -88,10 +86,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         from packages.domain.models import UserRole, UserStatus
         from packages.security.auth import AuthService
 
+        raw_pw = secrets.token_urlsafe(32)
+        hashed_pw = AuthService().hash_password(raw_pw)
+
         user = User(
             email=email,
             email_hash=hashlib.sha256(email.lower().encode()).hexdigest(),
-            hashed_password=AuthService().hash_password(secrets.token_urlsafe(32)),
+            hashed_password=hashed_pw,
+            password_history=[hashed_pw],
             full_name="Demo Researcher",
             display_name=email.split("@")[0],
             role=UserRole.RESEARCHER,
@@ -234,28 +236,71 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' data: https://fonts.gstatic.com; "
+            "img-src 'self' data: https: blob:; "
+            "connect-src 'self' ws: wss:; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
         )
+        return response
+
+
+class AuditLoggingMiddleware(BaseHTTPMiddleware):
+    """Structured audit trail for mutating operations (POST, PUT, PATCH, DELETE)."""
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        is_mutating = request.method in ("POST", "PUT", "PATCH", "DELETE")
+        start_time = time.perf_counter()
+
+        response = await call_next(request)
+
+        if is_mutating and not request.url.path.startswith(
+            ("/static", "/docs", "/redoc", "/favicon.ico")
+        ):
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            user = getattr(request.state, "user", None)
+            user_id = str(user.id) if user and hasattr(user, "id") else "anonymous"
+            client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            if not client_ip:
+                client_ip = request.client.host if request.client else "unknown"
+
+            logger.info(
+                "AUDIT_RECORD: method=%s path=%s status=%d user_id=%s ip=%s duration_ms=%d",
+                request.method,
+                request.url.path,
+                response.status_code,
+                user_id,
+                client_ip,
+                duration_ms,
+            )
+
         return response
 
 
 async def _get_demo_user() -> User | None:
     """Shared demo-mode fallback for dependency-injected auth.
 
-    BY DESIGN: kept for explicit demo_mode=True local use only; default
-    demo_mode=False and is_production fail-closed (401 without token).
+    Only active when DEMO_MODE=true is explicitly set for local dev;
+    always disabled in production environments.
     """
     from packages.domain.config import get_settings
 
     settings = get_settings()
-    # BY DESIGN: do not remove fallback; 401 repro uses demo_mode=False.
     if not settings.demo_mode or settings.is_production:
         return None
     async with get_session() as session:

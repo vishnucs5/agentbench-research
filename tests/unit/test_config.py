@@ -139,4 +139,3 @@ def test_validate_production_readiness():
         assert len(issues) == 0
 
     reset_settings()
-

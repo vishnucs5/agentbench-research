@@ -1,12 +1,12 @@
 import uuid
-from datetime import datetime, UTC
-import pytest
+from datetime import UTC, datetime
 
+import pytest
 from packages.domain.models import Paper, Project, ResearchRun, RunStatus
+from packages.reports.generators.audit import generate_claim_audit_log
 from packages.reports.generators.bibtex import generate_bibtex
 from packages.reports.generators.latex import generate_latex_manuscript
 from packages.reports.generators.markdown import generate_markdown_survey
-from packages.reports.generators.audit import generate_claim_audit_log
 from packages.reports.generators.plagiarism_cert import generate_plagiarism_certificate
 
 
@@ -101,12 +101,32 @@ def test_generate_markdown_survey(sample_project, sample_papers, sample_runs):
 
 def test_generate_claim_audit_log():
     claims = [
-        {"claim_text": "Transformer achieves 97.6% accuracy.", "claim_type": "empirical_result", "page": 1},
-        {"claim_text": "CNN trained with 0.001 learning rate.", "claim_type": "hyperparameter", "page": 2},
+        {
+            "claim_text": "Transformer achieves 97.6% accuracy.",
+            "claim_type": "empirical_result",
+            "page": 1,
+        },
+        {
+            "claim_text": "CNN trained with 0.001 learning rate.",
+            "claim_type": "hyperparameter",
+            "page": 2,
+        },
     ]
     verifications = [
-        {"claim_id": "c1", "status": "supported", "confidence": 0.95, "evidence_id": "e1", "page": 1},
-        {"claim_id": "c2", "status": "supported", "confidence": 0.92, "evidence_id": "e2", "page": 2},
+        {
+            "claim_id": "c1",
+            "status": "supported",
+            "confidence": 0.95,
+            "evidence_id": "e1",
+            "page": 1,
+        },
+        {
+            "claim_id": "c2",
+            "status": "supported",
+            "confidence": 0.92,
+            "evidence_id": "e2",
+            "page": 2,
+        },
     ]
     audit_str = generate_claim_audit_log("Cybersecurity Project", claims, verifications)
     assert "# Claim Verification Audit Log" in audit_str

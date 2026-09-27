@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -43,7 +43,11 @@ def generate_claim_audit_log(
 
     for i, c in enumerate(claims, start=1):
         cid = c.get("id") or f"c{i}"
-        v = v_map.get(cid, {}) if cid in v_map else (verifications[i - 1] if i - 1 < len(verifications) else {})
+        v = (
+            v_map.get(cid, {})
+            if cid in v_map
+            else (verifications[i - 1] if i - 1 < len(verifications) else {})
+        )
         text = c.get("claim_text") or c.get("text") or "Empty claim text"
         ctype = c.get("claim_type") or "empirical_result"
         status = v.get("status") or "unsupported"
@@ -51,19 +55,25 @@ def generate_claim_audit_log(
         page = v.get("page") or c.get("page") or "1"
         ev_id = v.get("evidence_id") or "chunk-ref"
 
-        status_badge = "✅ Supported" if status == "supported" else ("❌ Refuted" if status == "refuted" else "⚠️ Unsupported")
+        status_badge = (
+            "✅ Supported"
+            if status == "supported"
+            else ("❌ Refuted" if status == "refuted" else "⚠️ Unsupported")
+        )
 
         lines.append(
             f"| {i} | {text} | `{ctype}` | {status_badge} | {int(conf * 100)}% | Page {page} (`{ev_id}`) |"
         )
 
-    lines.extend([
-        "",
-        "---",
-        "",
-        "## Compliance & Integrity Note",
-        "All verified claims have been checked against the immutable chunk storage. ",
-        "Any claims marked as Unsupported were filtered from the synthesized manuscript.",
-    ])
+    lines.extend(
+        [
+            "",
+            "---",
+            "",
+            "## Compliance & Integrity Note",
+            "All verified claims have been checked against the immutable chunk storage. ",
+            "Any claims marked as Unsupported were filtered from the synthesized manuscript.",
+        ]
+    )
 
     return "\n".join(lines)

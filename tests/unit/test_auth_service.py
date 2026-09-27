@@ -175,4 +175,3 @@ def test_ip_lockout_mechanism() -> None:
     assert svc.is_ip_locked(ip)
     svc.clear_ip_failed_attempts(ip)
     assert not svc.is_ip_locked(ip)
-

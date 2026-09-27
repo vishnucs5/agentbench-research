@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from packages.domain.database import get_db_session
-from packages.domain.models import Claim, EvidenceLink, Paper, PlagiarismCheck, Project, ResearchRun, User
+from packages.domain.models import (
+    Claim,
+    EvidenceLink,
+    Paper,
+    Project,
+    ResearchRun,
+    User,
+)
 from packages.plagiarism.service import PlagiarismService, get_plagiarism_service
 from packages.reports.generators.audit import generate_claim_audit_log
 from packages.reports.generators.bibtex import generate_bibtex
@@ -19,6 +21,9 @@ from packages.reports.generators.latex import generate_latex_manuscript
 from packages.reports.generators.markdown import generate_markdown_survey
 from packages.reports.generators.plagiarism_cert import generate_plagiarism_certificate
 from packages.security.middleware import get_current_user
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/v1/reports", tags=["reports"])
 
@@ -49,10 +54,7 @@ class PlagiarismExportResponse(BaseModel):
 async def _require_owned_project(
     session: AsyncSession, project_id: UUID, current_user: User
 ) -> Project:
-    stmt = (
-        select(Project)
-        .where(Project.id == project_id, Project.owner_id == current_user.id)
-    )
+    stmt = select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     result = await session.execute(stmt)
     project = result.scalar_one_or_none()
     if project is None:
@@ -71,14 +73,22 @@ async def _build_report_content(
 ) -> tuple[str, str, str]:
     """Returns (content, filename, media_type)."""
     # Fetch papers
-    papers_stmt = select(Paper).where(Paper.project_id == project.id).order_by(Paper.created_at.desc())
+    papers_stmt = (
+        select(Paper).where(Paper.project_id == project.id).order_by(Paper.created_at.desc())
+    )
     papers = (await session.execute(papers_stmt)).scalars().all()
 
     # Fetch runs
-    runs_stmt = select(ResearchRun).where(ResearchRun.project_id == project.id).order_by(ResearchRun.started_at.desc())
+    runs_stmt = (
+        select(ResearchRun)
+        .where(ResearchRun.project_id == project.id)
+        .order_by(ResearchRun.started_at.desc())
+    )
     runs = (await session.execute(runs_stmt)).scalars().all()
 
-    safe_name = "".join(c if c.isalnum() else "_" for c in project.name.lower()).strip("_") or "report"
+    safe_name = (
+        "".join(c if c.isalnum() else "_" for c in project.name.lower()).strip("_") or "report"
+    )
 
     if report_type == "bibtex":
         content = generate_bibtex(papers)
@@ -120,21 +130,29 @@ async def _build_report_content(
         for claim, link in rows:
             if claim.id not in seen_claim_ids:
                 seen_claim_ids.add(claim.id)
-                claims_list.append({
-                    "claim_id": str(claim.id),
-                    "claim_text": claim.claim_text,
-                    "claim_type": claim.claim_type,
-                    "confidence": claim.confidence,
-                    "status": claim.status.value if hasattr(claim.status, "value") else str(claim.status),
-                })
+                claims_list.append(
+                    {
+                        "claim_id": str(claim.id),
+                        "claim_text": claim.claim_text,
+                        "claim_type": claim.claim_type,
+                        "confidence": claim.confidence,
+                        "status": claim.status.value
+                        if hasattr(claim.status, "value")
+                        else str(claim.status),
+                    }
+                )
             if link is not None:
-                verifications_list.append({
-                    "claim_id": str(claim.id),
-                    "evidence_id": str(link.chunk_id),
-                    "status": link.support_type.value if hasattr(link.support_type, "value") else str(link.support_type),
-                    "confidence": link.match_score,
-                    "page": link.page_number,
-                })
+                verifications_list.append(
+                    {
+                        "claim_id": str(claim.id),
+                        "evidence_id": str(link.chunk_id),
+                        "status": link.support_type.value
+                        if hasattr(link.support_type, "value")
+                        else str(link.support_type),
+                        "confidence": link.match_score,
+                        "page": link.page_number,
+                    }
+                )
 
         content = generate_claim_audit_log(
             project_name=project.name,
@@ -155,8 +173,12 @@ async def _build_report_content(
 @router.get("/projects/{project_id}/export")
 async def export_project_report(
     project_id: UUID,
-    type: Literal["bibtex", "latex", "markdown", "audit"] = Query("markdown", description="Type of report to export"),
-    format: Literal["file", "json"] = Query("file", description="Download as attachment file or return JSON payload"),
+    type: Literal["bibtex", "latex", "markdown", "audit"] = Query(
+        "markdown", description="Type of report to export"
+    ),
+    format: Literal["file", "json"] = Query(
+        "file", description="Download as attachment file or return JSON payload"
+    ),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> Any:
@@ -207,7 +229,9 @@ async def preview_project_report(
 @router.get("/plagiarism/{check_id}/export")
 async def export_plagiarism_certificate(
     check_id: UUID,
-    format: Literal["html", "md", "json"] = Query("html", description="Certificate format: html, md, or json"),
+    format: Literal["html", "md", "json"] = Query(
+        "html", description="Certificate format: html, md, or json"
+    ),
     current_user: User = Depends(get_current_user),
     service: PlagiarismService = Depends(get_plagiarism_service),
 ) -> Any:

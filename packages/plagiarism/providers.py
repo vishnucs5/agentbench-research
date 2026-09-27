@@ -37,6 +37,62 @@ class PlagiarismCheckResult:
     error_message: str | None = None
 
 
+def handle_provider_error(
+    error: Exception,
+    provider_name: str,
+    start_time: float,
+    correlation_id: str | None = None,
+) -> PlagiarismCheckResult:
+    """Standardized error handler for plagiarism detection providers with structured logging."""
+    cid_str = f" [cid={correlation_id}]" if correlation_id else ""
+    if isinstance(error, httpx.HTTPStatusError):
+        msg = f"API error: {error.response.status_code}"
+        logger.error(
+            "Provider '%s' HTTP status error: %s (status=%d)%s",
+            provider_name,
+            error,
+            error.response.status_code,
+            cid_str,
+            exc_info=True,
+        )
+    elif isinstance(error, httpx.RequestError):
+        msg = f"Network connection error: {error}"
+        logger.error(
+            "Provider '%s' network request error: %s%s",
+            provider_name,
+            error,
+            cid_str,
+            exc_info=True,
+        )
+    elif isinstance(error, ValueError):
+        msg = str(error)
+        logger.warning(
+            "Provider '%s' validation warning: %s%s",
+            provider_name,
+            error,
+            cid_str,
+        )
+    else:
+        msg = str(error)
+        logger.error(
+            "Provider '%s' unexpected error: %s%s",
+            provider_name,
+            error,
+            cid_str,
+            exc_info=True,
+        )
+
+    return PlagiarismCheckResult(
+        overall_similarity=0.0,
+        originality_score=100.0,
+        total_matches=0,
+        matches=[],
+        provider_used=provider_name,
+        processing_time_ms=int((time.perf_counter() - start_time) * 1000),
+        error_message=msg,
+    )
+
+
 class PlagiarismProvider(ABC):
     """Abstract base class for plagiarism detection providers."""
 
@@ -300,28 +356,8 @@ class ExternalAPIProvider(PlagiarismProvider):
                 processing_time_ms=int((time.perf_counter() - start_time) * 1000),
             )
 
-        except httpx.HTTPStatusError as e:
-            logger.error(f"External plagiarism API error: {e}")
-            return PlagiarismCheckResult(
-                overall_similarity=0.0,
-                originality_score=100.0,
-                total_matches=0,
-                matches=[],
-                provider_used=self.get_name(),
-                processing_time_ms=int((time.perf_counter() - start_time) * 1000),
-                error_message=f"API error: {e.response.status_code}",
-            )
         except Exception as e:
-            logger.error(f"External plagiarism API error: {e}")
-            return PlagiarismCheckResult(
-                overall_similarity=0.0,
-                originality_score=100.0,
-                total_matches=0,
-                matches=[],
-                provider_used=self.get_name(),
-                processing_time_ms=int((time.perf_counter() - start_time) * 1000),
-                error_message=str(e),
-            )
+            return handle_provider_error(e, self.get_name(), start_time)
 
     async def close(self) -> None:
         """Close the HTTP client."""

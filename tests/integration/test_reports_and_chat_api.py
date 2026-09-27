@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, UTC
-import pytest
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import delete
+from datetime import UTC, datetime
 
+import pytest
 from apps.api.main import app
+from httpx import ASGITransport, AsyncClient
 from packages.domain.database import get_db_session, init_db
 from packages.domain.models import (
     Chunk,
@@ -21,6 +20,7 @@ from packages.domain.models import (
     UserRole,
 )
 from packages.security.auth import AuthService
+from sqlalchemy import delete
 
 
 @pytest.fixture(scope="session", autouse=True)

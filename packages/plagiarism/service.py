@@ -311,4 +311,3 @@ def get_plagiarism_service() -> PlagiarismService:
 def reset_plagiarism_service() -> None:
     global _plagiarism_service
     _plagiarism_service = None
-

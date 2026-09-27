@@ -1,7 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
+
+
+def _get_val(obj: Any, key: str, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
 
 
 def generate_plagiarism_certificate(
@@ -11,22 +17,19 @@ def generate_plagiarism_certificate(
     **kwargs: Any,
 ) -> str:
     """Generate a formal Originality & Plagiarism Audit Certificate in HTML or Markdown."""
-    # Handle dict or model instance
-    get = (lambda k, d=None: check.get(k, d)) if isinstance(check, dict) else (lambda k, d=None: getattr(check, k, d))
-
-    check_id = str(get("id") or "N/A")
-    filename = str(get("source_filename") or "Manuscript_Draft.pdf")
-    orig_score = float(get("originality_score") or 0.0)
-    sim_score = float(get("similarity_score") or (100.0 - orig_score))
-    verdict = str(get("verdict") or "clean").upper()
-    words = int(get("total_words") or 0)
-    chars = int(get("total_characters") or 0)
+    check_id = str(_get_val(check, "id") or "N/A")
+    filename = str(_get_val(check, "source_filename") or "Manuscript_Draft.pdf")
+    orig_score = float(_get_val(check, "originality_score") or 0.0)
+    sim_score = float(_get_val(check, "similarity_score") or (100.0 - orig_score))
+    verdict = str(_get_val(check, "verdict") or "clean").upper()
+    words = int(_get_val(check, "total_words") or 0)
+    chars = int(_get_val(check, "total_characters") or 0)
     if matches is None:
-        matches = get("matches") or []
+        matches = _get_val(check, "matches") or []
 
     fmt = kwargs.get("format_type", format)
 
-    created_at = get("created_at")
+    created_at = _get_val(check, "created_at")
     if isinstance(created_at, datetime):
         date_str = created_at.strftime("%B %d, %Y - %H:%M UTC")
     else:
@@ -55,21 +58,24 @@ def generate_plagiarism_certificate(
         ]
 
         if matches:
-            lines.extend([
-                "| # | Matched Text Excerpt | Similarity | Source Document | Page |",
-                "| :-: | :--- | :---: | :--- | :-: |",
-            ])
+            lines.extend(
+                [
+                    "| # | Matched Text Excerpt | Similarity | Source Document | Page |",
+                    "| :-: | :--- | :---: | :--- | :-: |",
+                ]
+            )
             for i, m in enumerate(matches, start=1):
-                m_get = (lambda k, d=None: m.get(k, d)) if isinstance(m, dict) else (lambda k, d=None: getattr(m, k, d))
-                p_text = str(m_get("matched_passage") or m_get("text") or "Excerpt")
+                p_text = str(_get_val(m, "matched_passage") or _get_val(m, "text") or "Excerpt")
                 if len(p_text) > 70:
                     p_text = p_text[:67] + "..."
-                sim = float(m_get("similarity_score") or 0.0) * 100
-                src_title = str(m_get("source_title") or "Unknown Paper")
-                page = m_get("source_page") or "1"
-                lines.append(f"| {i} | \"{p_text}\" | {sim:.1f}% | {src_title} | Page {page} |")
+                sim = float(_get_val(m, "similarity_score") or 0.0) * 100
+                src_title = str(_get_val(m, "source_title") or "Unknown Paper")
+                page = _get_val(m, "source_page") or "1"
+                lines.append(f'| {i} | "{p_text}" | {sim:.1f}% | {src_title} | Page {page} |')
         else:
-            lines.append("No suspicious similarities or overlapping passages detected. Document is original.")
+            lines.append(
+                "No suspicious similarities or overlapping passages detected. Document is original."
+            )
 
         return "\n".join(lines)
 
@@ -78,11 +84,10 @@ def generate_plagiarism_certificate(
     if matches:
         rows = []
         for i, m in enumerate(matches, start=1):
-            m_get = (lambda k, d=None: m.get(k, d)) if isinstance(m, dict) else (lambda k, d=None: getattr(m, k, d))
-            p_text = str(m_get("matched_passage") or m_get("text") or "Excerpt")
-            sim = float(m_get("similarity_score") or 0.0) * 100
-            src_title = str(m_get("source_title") or "Unknown Paper")
-            page = m_get("source_page") or "1"
+            p_text = str(_get_val(m, "matched_passage") or _get_val(m, "text") or "Excerpt")
+            sim = float(_get_val(m, "similarity_score") or 0.0) * 100
+            src_title = str(_get_val(m, "source_title") or "Unknown Paper")
+            page = _get_val(m, "source_page") or "1"
             rows.append(f"""
             <tr style="border-bottom: 1px solid #e2e8f0;">
               <td style="padding: 10px; font-weight: bold; color: #64748b;">{i}</td>
@@ -104,7 +109,7 @@ def generate_plagiarism_certificate(
             </tr>
           </thead>
           <tbody>
-            {''.join(rows)}
+            {"".join(rows)}
           </tbody>
         </table>
         """

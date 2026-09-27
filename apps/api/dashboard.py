@@ -363,7 +363,9 @@ async def execute_research_run(
     cache: RedisCache | MemoryCache = Depends(get_cache),
 ) -> ExecuteRunResponse:
     from datetime import UTC
-    from packages.domain.models import EventType as ModelEventType, RunStatus, TraceEvent
+
+    from packages.domain.models import EventType as ModelEventType
+    from packages.domain.models import RunStatus, TraceEvent
 
     await _require_owned_project(session, project_id, current_user)
 
@@ -372,7 +374,9 @@ async def execute_research_run(
         project_id=project_id,
         user_id=current_user.id,
         request_text=payload.prompt.strip(),
-        plan_json=[{"step": s, "description": f"Execute {s} phase", "status": "completed"} for s in steps],
+        plan_json=[
+            {"step": s, "description": f"Execute {s} phase", "status": "completed"} for s in steps
+        ],
         status=RunStatus.EXTRACTING,
         model_profile=payload.model_profile,
     )
@@ -381,11 +385,46 @@ async def execute_research_run(
 
     # Create trace events for each pipeline stage
     trace_configs = [
-        (ModelEventType.STATE_TRANSITION, "planner", "plan_created", 42, {"query": run.request_text}, {"steps": steps}),
-        (ModelEventType.TOOL_CALL, "retrieval", "hybrid_search", 28, {"top_k": 5}, {"hits_count": 3}),
-        (ModelEventType.CLAIM_EXTRACTED, "extractor", "claims_extracted", 55, {"target": "claims"}, {"claim_types": 8}),
-        (ModelEventType.STATE_TRANSITION, "synthesis", "matrix_comparison", 47, {"format": "matrix"}, {"comparisons": 2}),
-        (ModelEventType.CLAIM_VERIFIED, "verifier", "evidence_verified", 33, {"strict": False}, {"status": "verified"}),
+        (
+            ModelEventType.STATE_TRANSITION,
+            "planner",
+            "plan_created",
+            42,
+            {"query": run.request_text},
+            {"steps": steps},
+        ),
+        (
+            ModelEventType.TOOL_CALL,
+            "retrieval",
+            "hybrid_search",
+            28,
+            {"top_k": 5},
+            {"hits_count": 3},
+        ),
+        (
+            ModelEventType.CLAIM_EXTRACTED,
+            "extractor",
+            "claims_extracted",
+            55,
+            {"target": "claims"},
+            {"claim_types": 8},
+        ),
+        (
+            ModelEventType.STATE_TRANSITION,
+            "synthesis",
+            "matrix_comparison",
+            47,
+            {"format": "matrix"},
+            {"comparisons": 2},
+        ),
+        (
+            ModelEventType.CLAIM_VERIFIED,
+            "verifier",
+            "evidence_verified",
+            33,
+            {"strict": False},
+            {"status": "verified"},
+        ),
     ]
 
     for seq, (evt_type, comp, act, lat, inp, out) in enumerate(trace_configs, start=1):
@@ -429,4 +468,3 @@ async def execute_research_run(
         steps_completed=steps,
         message="Autonomous research run executed successfully.",
     )
-

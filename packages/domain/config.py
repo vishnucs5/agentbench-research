@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     )
 
     # Application
+    config_version: str = "1.0.0"
     app_env: Literal["development", "staging", "production", "test"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "DEBUG"
     secret_key: str = Field(..., min_length=32)
@@ -123,7 +124,9 @@ class Settings(BaseSettings):
         issues: list[str] = []
         if self.is_production:
             if "change-in-production" in self.secret_key.lower():
-                issues.append("SECRET_KEY must be changed from the default development placeholder.")
+                issues.append(
+                    "SECRET_KEY must be changed from the default development placeholder."
+                )
             if self.postgres_password == "agentbench":
                 issues.append("POSTGRES_PASSWORD must be changed from the default 'agentbench'.")
             if self.minio_root_password == "minioadmin":
@@ -141,3 +144,16 @@ def get_settings() -> Settings:
 def reset_settings() -> None:
     get_settings.cache_clear()
 
+
+def rotate_openrouter_api_key(new_key: str) -> None:
+    """Dynamically update the OpenRouter API key without requiring a restart."""
+    import os
+
+    os.environ["OPENROUTER_API_KEY"] = new_key
+    reset_settings()
+    try:
+        from packages.agent.factory import ProviderRegistry
+
+        ProviderRegistry.clear()
+    except Exception:
+        pass

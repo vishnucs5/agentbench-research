@@ -25,7 +25,6 @@ from packages.security.schemas import (
 )
 from pydantic import ValidationError
 
-
 DISALLOWED_COMMON_PASSWORDS: set[str] = {
     "password",
     "password123",
@@ -332,6 +331,7 @@ class AuthService:
                 email=request.email,
                 email_hash=email_hash,
                 hashed_password=hashed,
+                password_history=[hashed],
                 full_name=request.full_name,
                 display_name=display_name,
                 role=role,
@@ -413,11 +413,18 @@ class AuthService:
             if not user or not self.verify_password(request.current_password, user.hashed_password):
                 return False
 
+            history = list(getattr(user, "password_history", None) or [user.hashed_password])
+            for past_hash in history[:5]:
+                if self.verify_password(request.new_password, past_hash):
+                    raise ValueError("Cannot reuse any of your last 5 passwords")
+
             valid, error = self.validate_password_strength(request.new_password, user.email)
             if not valid:
                 raise ValueError(error)
 
-            user.hashed_password = self.hash_password(request.new_password)
+            new_hashed = self.hash_password(request.new_password)
+            user.hashed_password = new_hashed
+            user.password_history = ([new_hashed] + history)[:5]
             await session.commit()
 
             self.revoke_all_refresh_tokens(user_id)

@@ -55,6 +55,15 @@ async_session_factory = async_sessionmaker(
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if use_sqlite:
+            try:
+                from sqlalchemy import text
+
+                await conn.execute(
+                    text("ALTER TABLE users ADD COLUMN password_history JSON DEFAULT '[]'")
+                )
+            except Exception:
+                pass
 
 
 async def close_db() -> None:

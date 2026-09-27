@@ -3,8 +3,6 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-logger = logging.getLogger(__name__)
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from packages.domain.database import get_db_session
 from packages.domain.models import Chunk, PaperPage, PaperStatus, Project, User
@@ -20,6 +18,8 @@ from packages.security.middleware import get_current_user
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/projects/{project_id}/papers", tags=["papers"])
 

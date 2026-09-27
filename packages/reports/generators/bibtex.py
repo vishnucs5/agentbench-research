@@ -49,18 +49,28 @@ def generate_bibtex(papers: list[Any]) -> str:
         title = getattr(p, "title", "Untitled") or "Untitled"
         authors = _format_authors(getattr(p, "authors_json", None) or getattr(p, "authors", None))
         year = getattr(p, "year", None) or getattr(p, "publication_year", None) or 2024
-        venue = getattr(p, "journal_or_conference", None) or getattr(p, "source_url", None) or "arXiv preprint"
+        venue = (
+            getattr(p, "journal_or_conference", None)
+            or getattr(p, "source_url", None)
+            or "arXiv preprint"
+        )
         doi = getattr(p, "doi", None)
         abstract = getattr(p, "abstract", None)
 
-        entry_type = "inproceedings" if "conference" in venue.lower() or "symposium" in venue.lower() else "article"
+        entry_type = (
+            "inproceedings"
+            if "conference" in venue.lower() or "symposium" in venue.lower()
+            else "article"
+        )
 
         fields = [
             f"@{entry_type}{{{key},",
             f"  title = {{{{{title}}}}},",
             f"  author = {{{authors}}},",
             f"  year = {{{year}}},",
-            f"  journal = {{{venue}}}," if entry_type == "article" else f"  booktitle = {{{venue}}},",
+            f"  journal = {{{venue}}},"
+            if entry_type == "article"
+            else f"  booktitle = {{{venue}}},",
         ]
 
         if doi:

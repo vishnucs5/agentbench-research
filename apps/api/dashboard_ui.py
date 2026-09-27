@@ -89,4 +89,3 @@ async def serve_reports(rest: str = ""):
 @router.get("/chat/{rest:path}", include_in_schema=False)
 async def serve_chat(rest: str = ""):
     return await serve_react_app()
-
