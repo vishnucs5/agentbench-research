@@ -71,7 +71,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="AgentBench-Research API",
         description="Evidence-grounded autonomous research-paper analysis agent",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
         docs_url="/docs" if settings.is_development else None,
         redoc_url="/redoc" if settings.is_development else None,
@@ -171,7 +171,7 @@ def create_app() -> FastAPI:
         app_status = "healthy" if db_status == "connected" else "degraded"
         return HealthResponse(
             status=app_status,
-            version="0.1.0",
+            version="0.2.0",
             environment=settings.app_env,
             database=db_status,
             cache=cache_status,

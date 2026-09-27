@@ -1,6 +1,6 @@
 [project]
 name = "agentbench-extraction"
-version = "0.1.0"
+version = "0.2.0"
 description = "AgentBench-Research Structured Extraction"
 dependencies = [
     "pydantic>=2.6.0",

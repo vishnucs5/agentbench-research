@@ -20,7 +20,7 @@ def generate_markdown_survey(
 
     lines: list[str] = [
         f"# Research Survey: {proj_name}",
-        f"**Domain:** `{domain}` | **Generated:** {now_str} | **Engine:** `AgentBench-Research v0.1.0`",
+        f"**Domain:** `{domain}` | **Generated:** {now_str} | **Engine:** `AgentBench-Research v0.2.0`",
         "",
         "---",
         "",

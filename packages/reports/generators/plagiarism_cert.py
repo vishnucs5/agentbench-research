@@ -173,7 +173,7 @@ def generate_plagiarism_certificate(
     {matches_html}
 
     <div class="footer">
-      <span>AgentBench-Research v0.1.0 · Automated Academic Integrity Suite</span>
+      <span>AgentBench-Research v0.2.0 · Automated Academic Integrity Suite</span>
       <span>Verified Grounding Signature: SHA-256 Validated</span>
     </div>
   </div>

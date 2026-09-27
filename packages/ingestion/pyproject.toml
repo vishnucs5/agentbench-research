@@ -1,6 +1,6 @@
 [project]
 name = "agentbench-ingestion"
-version = "0.1.0"
+version = "0.2.0"
 description = "AgentBench-Research Paper Ingestion"
 dependencies = [
     "pymupdf>=1.23.0",
